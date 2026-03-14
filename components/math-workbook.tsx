@@ -2,6 +2,7 @@
 
 import {
   type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   useEffect,
   useMemo,
@@ -65,6 +66,17 @@ type RootBlock = {
   width: number;
 };
 
+type FloatingSymbol = {
+  id: string;
+  type: "symbol";
+  label: string;
+  content: string;
+  x: number;
+  y: number;
+  color: string;
+  fontSize: number;
+};
+
 type MathBlock = FractionBlock | DivisionBlock | PowerBlock | RootBlock;
 
 type WriterState = {
@@ -72,6 +84,7 @@ type WriterState = {
   mode: StudyMode;
   textHtml: string;
   blocks: MathBlock[];
+  symbols: FloatingSymbol[];
 };
 
 type ModalState =
@@ -95,10 +108,15 @@ type InlineShortcutGroup = {
 };
 
 type DragState = {
-  blockId: string;
+  itemType: "block" | "symbol";
+  itemId: string;
   pointerOffsetX: number;
   pointerOffsetY: number;
 } | null;
+
+type ToolbarDragPayload =
+  | { kind: "structured"; toolId: StructuredTool }
+  | { kind: "shortcut"; shortcutId: string };
 
 const STORAGE_KEY = "maths-facile-free-layout-v1";
 
@@ -111,7 +129,8 @@ const DEFAULT_STATE: WriterState = {
   title: "Mon document de maths",
   mode: "college",
   textHtml: DEFAULT_TEXT_HTML,
-  blocks: []
+  blocks: [],
+  symbols: []
 };
 
 const FONT_SIZE_OPTIONS = [
@@ -197,7 +216,10 @@ function parseStoredState(raw: string): WriterState | null {
       return null;
     }
 
-    return parsed;
+    return {
+      ...parsed,
+      symbols: Array.isArray(parsed.symbols) ? parsed.symbols : []
+    };
   } catch {
     return null;
   }
@@ -294,12 +316,15 @@ export function MathWorkbook() {
   const [openMenu, setOpenMenu] = useState<UtilityMenu>(null);
   const [modalState, setModalState] = useState<ModalState>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [selectedSymbolId, setSelectedSymbolId] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isExporting, setIsExporting] = useState<"pdf" | "word" | null>(null);
+  const [isCanvasDropActive, setIsCanvasDropActive] = useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const selectionRef = useRef<Range | null>(null);
   const dragRef = useRef<DragState>(null);
+  const toolbarDragUntilRef = useRef(0);
 
   const activeInlineShortcuts = useMemo(
     () =>
@@ -317,6 +342,10 @@ export function MathWorkbook() {
   const selectedBlock = useMemo(
     () => state.blocks.find((block) => block.id === selectedBlockId) ?? null,
     [selectedBlockId, state.blocks]
+  );
+  const selectedSymbol = useMemo(
+    () => state.symbols.find((symbol) => symbol.id === selectedSymbolId) ?? null,
+    [selectedSymbolId, state.symbols]
   );
 
   useEffect(() => {
@@ -365,24 +394,28 @@ export function MathWorkbook() {
         return;
       }
 
-      const draggedBlock = state.blocks.find((block) => block.id === dragRef.current?.blockId);
-
-      if (!draggedBlock) {
-        return;
-      }
-
       const bounds = canvas.getBoundingClientRect();
       const nextX = event.clientX - bounds.left - dragRef.current.pointerOffsetX;
       const nextY = event.clientY - bounds.top - dragRef.current.pointerOffsetY;
       const clamped = {
-        x: Math.max(24, Math.min(560, Math.round(nextX))),
-        y: Math.max(120, Math.min(920, Math.round(nextY)))
+        x: Math.max(18, Math.min(bounds.width - 24, Math.round(nextX))),
+        y: Math.max(18, Math.min(bounds.height - 24, Math.round(nextY)))
       };
+
+      if (dragRef.current.itemType === "block") {
+        setState((current) => ({
+          ...current,
+          blocks: current.blocks.map((block) =>
+            block.id === dragRef.current?.itemId ? { ...block, x: clamped.x, y: clamped.y } : block
+          )
+        }));
+        return;
+      }
 
       setState((current) => ({
         ...current,
-        blocks: current.blocks.map((block) =>
-          block.id === draggedBlock.id ? { ...block, x: clamped.x, y: clamped.y } : block
+        symbols: current.symbols.map((symbol) =>
+          symbol.id === dragRef.current?.itemId ? { ...symbol, x: clamped.x, y: clamped.y } : symbol
         )
       }));
     }
@@ -398,7 +431,7 @@ export function MathWorkbook() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [state.blocks]);
+  }, []);
 
   function createBlock(type: StructuredTool) {
     const count = state.blocks.length;
@@ -430,6 +463,46 @@ export function MathWorkbook() {
     }
 
     return { id: createId("root"), type, radicand: "", result: "", caption: "", ...position } satisfies MathBlock;
+  }
+
+  function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number) {
+    return {
+      id: createId("symbol"),
+      type: "symbol",
+      label: shortcut.label,
+      content: shortcut.content.trim() || shortcut.label,
+      x,
+      y,
+      color: COLOR_OPTIONS[0].value,
+      fontSize: 1.18
+    } satisfies FloatingSymbol;
+  }
+
+  function getCanvasDropPosition(clientX: number, clientY: number) {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return { x: 24, y: 24 };
+    }
+
+    const bounds = canvas.getBoundingClientRect();
+
+    return {
+      x: Math.max(18, Math.min(bounds.width - 24, Math.round(clientX - bounds.left))),
+      y: Math.max(18, Math.min(bounds.height - 24, Math.round(clientY - bounds.top)))
+    };
+  }
+
+  function findShortcutById(shortcutId: string) {
+    for (const group of activeInlineShortcuts) {
+      const match = group.items.find((item) => item.id === shortcutId);
+
+      if (match) {
+        return match;
+      }
+    }
+
+    return null;
   }
 
   function syncText() {
@@ -602,24 +675,134 @@ export function MathWorkbook() {
     setSelectedBlockId((current) => (current === blockId ? null : current));
   }
 
-  function startDragging(blockId: string, event: ReactMouseEvent<HTMLElement>) {
+  function removeSymbol(symbolId: string) {
+    setState((current) => ({
+      ...current,
+      symbols: current.symbols.filter((symbol) => symbol.id !== symbolId)
+    }));
+    setSelectedSymbolId((current) => (current === symbolId ? null : current));
+  }
+
+  function updateSymbolStyle(symbolId: string, updates: Partial<Pick<FloatingSymbol, "fontSize" | "color">>) {
+    setState((current) => ({
+      ...current,
+      symbols: current.symbols.map((symbol) =>
+        symbol.id === symbolId ? { ...symbol, ...updates } : symbol
+      )
+    }));
+  }
+
+  function startDragging(itemType: "block" | "symbol", itemId: string, x: number, y: number, event: ReactMouseEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
 
-    const block = state.blocks.find((item) => item.id === blockId);
     const canvas = canvasRef.current;
 
-    if (!block || !canvas) {
+    if (!canvas) {
       return;
     }
 
     const bounds = canvas.getBoundingClientRect();
     dragRef.current = {
-      blockId,
-      pointerOffsetX: event.clientX - bounds.left - block.x,
-      pointerOffsetY: event.clientY - bounds.top - block.y
+      itemType,
+      itemId,
+      pointerOffsetX: event.clientX - bounds.left - x,
+      pointerOffsetY: event.clientY - bounds.top - y
     };
-    setSelectedBlockId(blockId);
+    if (itemType === "block") {
+      setSelectedBlockId(itemId);
+      setSelectedSymbolId(null);
+      return;
+    }
+
+    setSelectedSymbolId(itemId);
+    setSelectedBlockId(null);
+  }
+
+  function handleToolDragStart(payload: ToolbarDragPayload, event: ReactDragEvent<HTMLButtonElement>) {
+    toolbarDragUntilRef.current = Date.now() + 350;
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData("application/x-maths-tool", JSON.stringify(payload));
+    event.dataTransfer.setData("text/plain", payload.kind === "shortcut" ? payload.shortcutId : payload.toolId);
+    setOpenMenu(null);
+  }
+
+  function shouldIgnoreToolbarClick() {
+    if (Date.now() <= toolbarDragUntilRef.current) {
+      toolbarDragUntilRef.current = 0;
+      return true;
+    }
+
+    return false;
+  }
+
+  function handleCanvasDragOver(event: ReactDragEvent<HTMLElement>) {
+    if (!event.dataTransfer.types.includes("application/x-maths-tool")) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    setIsCanvasDropActive(true);
+  }
+
+  function handleCanvasDragLeave(event: ReactDragEvent<HTMLElement>) {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      return;
+    }
+
+    setIsCanvasDropActive(false);
+  }
+
+  function handleCanvasDrop(event: ReactDragEvent<HTMLElement>) {
+    const rawPayload = event.dataTransfer.getData("application/x-maths-tool");
+
+    if (!rawPayload) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setIsCanvasDropActive(false);
+    setSelectedBlockId(null);
+    setSelectedSymbolId(null);
+
+    let payload: ToolbarDragPayload | null = null;
+
+    try {
+      payload = JSON.parse(rawPayload) as ToolbarDragPayload;
+    } catch {
+      payload = null;
+    }
+
+    if (!payload) {
+      return;
+    }
+
+    const position = getCanvasDropPosition(event.clientX, event.clientY);
+
+    if (payload.kind === "structured") {
+      setModalState({
+        mode: "insert",
+        block: { ...createBlock(payload.toolId), x: position.x, y: position.y }
+      });
+      return;
+    }
+
+    const shortcut = findShortcutById(payload.shortcutId);
+
+    if (!shortcut) {
+      return;
+    }
+
+    const symbol = createFloatingSymbol(shortcut, position.x, position.y);
+
+    setState((current) => ({
+      ...current,
+      symbols: [...current.symbols, symbol]
+    }));
+    setSelectedSymbolId(symbol.id);
   }
 
   function resetDocument() {
@@ -628,6 +811,7 @@ export function MathWorkbook() {
     setOpenMenu(null);
     setModalState(null);
     setSelectedBlockId(null);
+    setSelectedSymbolId(null);
     selectionRef.current = null;
     if (editorRef.current) {
       editorRef.current.innerHTML = DEFAULT_TEXT_HTML;
@@ -849,9 +1033,16 @@ export function MathWorkbook() {
                   key={tool.id}
                   type="button"
                   className="toolbar-shortcut"
+                  draggable
                   title={tool.hint}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => openInsertModal(tool.id)}
+                  onDragStart={(event) => handleToolDragStart({ kind: "structured", toolId: tool.id }, event)}
+                  onClick={() => {
+                    if (shouldIgnoreToolbarClick()) {
+                      return;
+                    }
+
+                    openInsertModal(tool.id);
+                  }}
                 >
                   {tool.label}
                 </button>
@@ -887,9 +1078,16 @@ export function MathWorkbook() {
                   key={shortcut.id}
                   type="button"
                   className="toolbar-shortcut toolbar-shortcut-symbol"
+                  draggable
                   title={shortcut.hint}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => insertTextAtCursor(shortcut.content)}
+                  onDragStart={(event) => handleToolDragStart({ kind: "shortcut", shortcutId: shortcut.id }, event)}
+                  onClick={() => {
+                    if (shouldIgnoreToolbarClick()) {
+                      return;
+                    }
+
+                    insertTextAtCursor(shortcut.content);
+                  }}
                 >
                   {shortcut.label}
                 </button>
@@ -1014,13 +1212,54 @@ export function MathWorkbook() {
                 </button>
               </div>
             ) : null}
+
+            {selectedSymbol ? (
+              <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
+                <span className="selected-block-label">Symbole {selectedSymbol.label}</span>
+                <button
+                  type="button"
+                  className="chip-button chip-button-compact"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => updateSymbolStyle(selectedSymbol.id, { fontSize: Math.max(0.92, selectedSymbol.fontSize - 0.12) })}
+                >
+                  A-
+                </button>
+                <button
+                  type="button"
+                  className="chip-button chip-button-compact"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => updateSymbolStyle(selectedSymbol.id, { fontSize: Math.min(2.4, selectedSymbol.fontSize + 0.12) })}
+                >
+                  A+
+                </button>
+                {COLOR_OPTIONS.map((option) => (
+                  <button
+                    key={`selected-symbol-${option.id}`}
+                    type="button"
+                    className="color-chip"
+                    style={{ backgroundColor: option.value }}
+                    aria-label={option.label}
+                    title={option.label}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => updateSymbolStyle(selectedSymbol.id, { color: option.value })}
+                  />
+                ))}
+                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => removeSymbol(selectedSymbol.id)}>
+                  Supprimer
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div
-            className="document-canvas"
+            className={`document-canvas ${isCanvasDropActive ? "document-canvas-drop-active" : ""}`}
             ref={canvasRef}
+            onDragOver={handleCanvasDragOver}
+            onDragLeave={handleCanvasDragLeave}
+            onDrop={handleCanvasDrop}
             onMouseDown={() => {
               setSelectedBlockId(null);
+              setSelectedSymbolId(null);
               setOpenMenu(null);
             }}
           >
@@ -1029,6 +1268,9 @@ export function MathWorkbook() {
               className="canvas-editor"
               contentEditable
               suppressContentEditableWarning
+              onDragOver={handleCanvasDragOver}
+              onDragLeave={handleCanvasDragLeave}
+              onDrop={handleCanvasDrop}
               onInput={syncText}
               onFocus={saveSelection}
               onMouseUp={saveSelection}
@@ -1043,7 +1285,8 @@ export function MathWorkbook() {
                 style={{ left: `${block.x}px`, top: `${block.y}px` }}
                 onMouseDown={(event) => {
                   setSelectedBlockId(block.id);
-                  startDragging(block.id, event);
+                  setSelectedSymbolId(null);
+                  startDragging("block", block.id, block.x, block.y, event);
                 }}
                 onDoubleClick={(event) => {
                   event.stopPropagation();
@@ -1052,6 +1295,22 @@ export function MathWorkbook() {
               >
                 {renderMathPreview(block)}
               </article>
+            ))}
+
+            {state.symbols.map((symbol) => (
+              <button
+                key={symbol.id}
+                type="button"
+                className={`floating-math-symbol ${selectedSymbolId === symbol.id ? "floating-math-symbol-selected" : ""}`}
+                style={{ left: `${symbol.x}px`, top: `${symbol.y}px`, color: symbol.color, fontSize: `${symbol.fontSize}rem` }}
+                onMouseDown={(event) => {
+                  setSelectedSymbolId(symbol.id);
+                  setSelectedBlockId(null);
+                  startDragging("symbol", symbol.id, symbol.x, symbol.y, event);
+                }}
+              >
+                {symbol.content}
+              </button>
             ))}
           </div>
         </div>
