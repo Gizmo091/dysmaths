@@ -160,8 +160,18 @@ type EditingFractionState =
     }
   | null;
 
+type CanvasQuickMenu =
+  | {
+      x: number;
+      y: number;
+      clickX: number;
+      clickY: number;
+    }
+  | null;
+
 const STORAGE_KEY = "maths-facile-free-layout-v1";
 const FLOATING_TEXTBOX_Y_OFFSET = 10;
+const CANVAS_QUICK_MENU_OFFSET_X = 30;
 
 const DEFAULT_TEXT_HTML = [
   "<p><strong>Commence ici :</strong> écris librement ta méthode, tes calculs et ta réponse.</p>",
@@ -370,6 +380,7 @@ export function MathWorkbook() {
   const [selectedTextBoxIds, setSelectedTextBoxIds] = useState<string[]>([]);
   const [editingTextBoxId, setEditingTextBoxId] = useState<string | null>(null);
   const [editingFraction, setEditingFraction] = useState<EditingFractionState>(null);
+  const [canvasQuickMenu, setCanvasQuickMenu] = useState<CanvasQuickMenu>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isExporting, setIsExporting] = useState<"pdf" | "word" | null>(null);
   const [isCanvasDropActive, setIsCanvasDropActive] = useState(false);
@@ -589,13 +600,7 @@ export function MathWorkbook() {
 
     function handleMouseUp() {
       if (pendingSelectionRef.current && !pendingSelectionRef.current.started) {
-        const textBox = createFloatingTextBox(pendingSelectionRef.current.originX, pendingSelectionRef.current.originY);
-
-        setState((current) => ({
-          ...current,
-          textBoxes: [...current.textBoxes, textBox]
-        }));
-        beginTextBoxEditing(textBox.id);
+        openCanvasQuickMenuAtPoint(pendingSelectionRef.current.originX, pendingSelectionRef.current.originY);
       }
 
       dragRef.current = null;
@@ -612,6 +617,36 @@ export function MathWorkbook() {
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, []);
+
+  useEffect(() => {
+    function handleDocumentMouseDown(event: MouseEvent) {
+      if (!canvasQuickMenu) {
+        return;
+      }
+
+      const target = event.target as Node | null;
+      const canvas = canvasRef.current;
+
+      if (!canvas) {
+        setCanvasQuickMenu(null);
+        return;
+      }
+
+      const quickMenu = canvas.querySelector(".canvas-quick-menu");
+
+      if (quickMenu?.contains(target)) {
+        return;
+      }
+
+      setCanvasQuickMenu(null);
+    }
+
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentMouseDown);
+    };
+  }, [canvasQuickMenu]);
 
   function createBlock(type: StructuredTool) {
     const count = state.blocks.length;
@@ -814,6 +849,7 @@ export function MathWorkbook() {
     pendingSelectionRef.current = { originX: point.x, originY: point.y, started: false };
     setSelectionRect(null);
     setIsCanvasInteracting(true);
+    setCanvasQuickMenu(null);
     clearFloatingSelection();
     setOpenMenu(null);
   }
@@ -832,6 +868,69 @@ export function MathWorkbook() {
     setEditingTextBoxId(null);
     clearFloatingSelection();
     setOpenMenu(null);
+    setCanvasQuickMenu(null);
+  }
+
+  function openCanvasQuickMenu(clientX: number, clientY: number) {
+    const point = getCanvasPoint(clientX, clientY);
+    setCanvasQuickMenu({ x: point.x + CANVAS_QUICK_MENU_OFFSET_X, y: point.y, clickX: point.x, clickY: point.y });
+    clearFloatingSelection();
+    setOpenMenu(null);
+  }
+
+  function openCanvasQuickMenuAtPoint(x: number, y: number) {
+    setCanvasQuickMenu({ x: x + CANVAS_QUICK_MENU_OFFSET_X, y, clickX: x, clickY: y });
+    clearFloatingSelection();
+    setOpenMenu(null);
+  }
+
+  function createTextBoxAt(x: number, y: number) {
+    const textBox = createFloatingTextBox(x, y);
+
+    setState((current) => ({
+      ...current,
+      textBoxes: [...current.textBoxes, textBox]
+    }));
+    beginTextBoxEditing(textBox.id);
+    setCanvasQuickMenu(null);
+  }
+
+  function createStructuredToolAt(type: StructuredTool, x: number, y: number) {
+    if (type === "fraction") {
+      const block = { ...createBlock("fraction"), x, y };
+
+      setState((current) => ({
+        ...current,
+        blocks: [...current.blocks, block]
+      }));
+      selectSingleBlock(block.id);
+      setEditingFraction({ blockId: block.id, field: "numerator" });
+      setCanvasQuickMenu(null);
+      return;
+    }
+
+    setModalState({
+      mode: "insert",
+      block: { ...createBlock(type), x, y }
+    });
+    setCanvasQuickMenu(null);
+  }
+
+  function createShortcutSymbolAt(shortcutId: string, x: number, y: number) {
+    const shortcut = findShortcutById(shortcutId);
+
+    if (!shortcut) {
+      return;
+    }
+
+    const symbol = createFloatingSymbol(shortcut, x, y);
+
+    setState((current) => ({
+      ...current,
+      symbols: [...current.symbols, symbol]
+    }));
+    selectSingleSymbol(symbol.id);
+    setCanvasQuickMenu(null);
   }
 
   function syncText() {
@@ -953,6 +1052,7 @@ export function MathWorkbook() {
     }
 
     setOpenMenu(null);
+    setCanvasQuickMenu(null);
     setModalState({
       mode: "insert",
       block: createBlock(type)
@@ -974,6 +1074,7 @@ export function MathWorkbook() {
     }
 
     setOpenMenu(null);
+    setCanvasQuickMenu(null);
     setModalState({
       mode: "edit",
       block: { ...block }
@@ -1116,6 +1217,7 @@ export function MathWorkbook() {
   function startDragging(itemType: "block" | "symbol" | "textBox", itemId: string, x: number, y: number, event: ReactMouseEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
+    setCanvasQuickMenu(null);
     setIsCanvasInteracting(true);
 
     const canvas = canvasRef.current;
@@ -1311,6 +1413,7 @@ export function MathWorkbook() {
     window.localStorage.removeItem(STORAGE_KEY);
     setState(DEFAULT_STATE);
     setOpenMenu(null);
+    setCanvasQuickMenu(null);
     setModalState(null);
     clearFloatingSelection();
     selectionRef.current = null;
@@ -1782,6 +1885,8 @@ export function MathWorkbook() {
             onDragLeave={handleCanvasDragLeave}
             onDrop={handleCanvasDrop}
             onMouseDown={(event) => {
+              setCanvasQuickMenu(null);
+
               if (event.target === event.currentTarget) {
                 if (selectedTextBoxId) {
                   event.preventDefault();
@@ -1804,6 +1909,8 @@ export function MathWorkbook() {
               contentEditable
               suppressContentEditableWarning
               onMouseDown={(event) => {
+                setCanvasQuickMenu(null);
+
                 if (event.target === event.currentTarget) {
                   if (selectedTextBoxId) {
                     event.preventDefault();
@@ -1945,6 +2052,7 @@ export function MathWorkbook() {
                     value={textBox.text}
                     placeholder="Écris ici"
                     onMouseDown={(event) => {
+                      setCanvasQuickMenu(null);
                       event.stopPropagation();
                       selectSingleTextBox(textBox.id);
                     }}
@@ -1981,6 +2089,50 @@ export function MathWorkbook() {
                 )}
               </article>
             ))}
+
+            {canvasQuickMenu ? (
+              <>
+                <div
+                  className="canvas-quick-anchor"
+                  style={{ left: `${canvasQuickMenu.clickX}px`, top: `${canvasQuickMenu.clickY}px` }}
+                  aria-hidden="true"
+                />
+                <div
+                  className="canvas-quick-menu"
+                  style={{ left: `${canvasQuickMenu.x}px`, top: `${canvasQuickMenu.y}px` }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                >
+                  <button type="button" className="canvas-quick-action" onClick={() => createTextBoxAt(canvasQuickMenu.clickX, canvasQuickMenu.clickY)}>
+                    T
+                  </button>
+                  {activeStructuredTools.map((tool) => (
+                    <button
+                      key={`quick-${tool.id}`}
+                      type="button"
+                      className="canvas-quick-action"
+                      title={tool.label}
+                      onClick={() => createStructuredToolAt(tool.id, canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
+                    >
+                      {tool.id === "fraction" ? "a/b" : tool.id === "division" ? "÷" : tool.id === "power" ? "x²" : "√"}
+                    </button>
+                  ))}
+                  {activeInlineShortcuts
+                    .flatMap((group) => group.items)
+                    .slice(0, 6)
+                    .map((shortcut) => (
+                      <button
+                      key={`quick-symbol-${shortcut.id}`}
+                      type="button"
+                      className="canvas-quick-action"
+                      title={shortcut.hint}
+                      onClick={() => createShortcutSymbolAt(shortcut.id, canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
+                    >
+                      {shortcut.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
 
             {selectionRect ? (
               <div
