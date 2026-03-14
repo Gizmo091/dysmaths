@@ -1200,6 +1200,14 @@ input {
   cursor: grabbing;
 }
 
+.canvas-selection-rect {
+  position: absolute;
+  z-index: 3;
+  border: 1px solid rgba(217, 119, 69, 0.6);
+  background: rgba(217, 119, 69, 0.14);
+  pointer-events: none;
+}
+
 .selected-block-toolbar {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;

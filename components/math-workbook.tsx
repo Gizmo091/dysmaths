@@ -112,11 +112,34 @@ type DragState = {
   itemId: string;
   pointerOffsetX: number;
   pointerOffsetY: number;
+  groupBlockPositions: Array<{ id: string; x: number; y: number }>;
+  groupSymbolPositions: Array<{ id: string; x: number; y: number }>;
+  anchorX: number;
+  anchorY: number;
+} | null;
+
+type SelectionRect = {
+  originX: number;
+  originY: number;
+  currentX: number;
+  currentY: number;
+} | null;
+
+type PendingSelection = {
+  originX: number;
+  originY: number;
+  started: boolean;
 } | null;
 
 type ToolbarDragPayload =
   | { kind: "structured"; toolId: StructuredTool }
   | { kind: "shortcut"; shortcutId: string };
+
+type ToolbarDragMeta = {
+  offsetX: number;
+  offsetY: number;
+  previewNode: HTMLElement | null;
+};
 
 const STORAGE_KEY = "maths-facile-free-layout-v1";
 
@@ -315,16 +338,25 @@ export function MathWorkbook() {
   const [state, setState] = useState<WriterState>(DEFAULT_STATE);
   const [openMenu, setOpenMenu] = useState<UtilityMenu>(null);
   const [modalState, setModalState] = useState<ModalState>(null);
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [selectedSymbolId, setSelectedSymbolId] = useState<string | null>(null);
+  const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
+  const [selectedSymbolIds, setSelectedSymbolIds] = useState<string[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isExporting, setIsExporting] = useState<"pdf" | "word" | null>(null);
   const [isCanvasDropActive, setIsCanvasDropActive] = useState(false);
+  const [selectionRect, setSelectionRect] = useState<SelectionRect>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const selectionRef = useRef<Range | null>(null);
   const dragRef = useRef<DragState>(null);
+  const pendingSelectionRef = useRef<PendingSelection>(null);
+  const blocksRef = useRef<MathBlock[]>([]);
+  const symbolsRef = useRef<FloatingSymbol[]>([]);
+  const selectedBlockIdsRef = useRef<string[]>([]);
+  const selectedSymbolIdsRef = useRef<string[]>([]);
   const toolbarDragUntilRef = useRef(0);
+  const toolbarDragMetaRef = useRef<ToolbarDragMeta | null>(null);
+  const blockNodeRefs = useRef<Record<string, HTMLElement | null>>({});
+  const symbolNodeRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const activeInlineShortcuts = useMemo(
     () =>
@@ -339,6 +371,9 @@ export function MathWorkbook() {
     () => STRUCTURED_TOOLS.filter((tool) => tool.modes.includes(state.mode)),
     [state.mode]
   );
+  const selectedBlockId = selectedBlockIds.length === 1 && selectedSymbolIds.length === 0 ? selectedBlockIds[0] : null;
+  const selectedSymbolId = selectedSymbolIds.length === 1 && selectedBlockIds.length === 0 ? selectedSymbolIds[0] : null;
+  const selectedCount = selectedBlockIds.length + selectedSymbolIds.length;
   const selectedBlock = useMemo(
     () => state.blocks.find((block) => block.id === selectedBlockId) ?? null,
     [selectedBlockId, state.blocks]
@@ -375,6 +410,16 @@ export function MathWorkbook() {
   }, [isHydrated, state]);
 
   useEffect(() => {
+    blocksRef.current = state.blocks;
+    symbolsRef.current = state.symbols;
+  }, [state.blocks, state.symbols]);
+
+  useEffect(() => {
+    selectedBlockIdsRef.current = selectedBlockIds;
+    selectedSymbolIdsRef.current = selectedSymbolIds;
+  }, [selectedBlockIds, selectedSymbolIds]);
+
+  useEffect(() => {
     const element = editorRef.current;
 
     if (element && document.activeElement !== element && element.innerHTML !== state.textHtml) {
@@ -385,6 +430,31 @@ export function MathWorkbook() {
   useEffect(() => {
     function handleMouseMove(event: MouseEvent) {
       if (!dragRef.current) {
+        if (!pendingSelectionRef.current) {
+          return;
+        }
+
+        const point = getCanvasPoint(event.clientX, event.clientY);
+        const current = pendingSelectionRef.current;
+        const distance = Math.hypot(point.x - current.originX, point.y - current.originY);
+
+        if (!current.started && distance < 6) {
+          return;
+        }
+
+        const nextRect = {
+          originX: current.originX,
+          originY: current.originY,
+          currentX: point.x,
+          currentY: point.y
+        };
+
+        if (!current.started) {
+          pendingSelectionRef.current = { ...current, started: true };
+        }
+
+        setSelectionRect(nextRect);
+        updateSelectionFromRect(nextRect);
         return;
       }
 
@@ -395,33 +465,46 @@ export function MathWorkbook() {
       }
 
       const bounds = canvas.getBoundingClientRect();
-      const nextX = event.clientX - bounds.left - dragRef.current.pointerOffsetX;
-      const nextY = event.clientY - bounds.top - dragRef.current.pointerOffsetY;
-      const clamped = {
-        x: Math.max(18, Math.min(bounds.width - 24, Math.round(nextX))),
-        y: Math.max(18, Math.min(bounds.height - 24, Math.round(nextY)))
-      };
-
-      if (dragRef.current.itemType === "block") {
-        setState((current) => ({
-          ...current,
-          blocks: current.blocks.map((block) =>
-            block.id === dragRef.current?.itemId ? { ...block, x: clamped.x, y: clamped.y } : block
-          )
-        }));
-        return;
-      }
+      const nextAnchorX = event.clientX - bounds.left - dragRef.current.pointerOffsetX;
+      const nextAnchorY = event.clientY - bounds.top - dragRef.current.pointerOffsetY;
+      const deltaX = Math.round(nextAnchorX - dragRef.current.anchorX);
+      const deltaY = Math.round(nextAnchorY - dragRef.current.anchorY);
 
       setState((current) => ({
         ...current,
-        symbols: current.symbols.map((symbol) =>
-          symbol.id === dragRef.current?.itemId ? { ...symbol, x: clamped.x, y: clamped.y } : symbol
-        )
+        blocks: current.blocks.map((block) => {
+          const dragged = dragRef.current?.groupBlockPositions.find((item) => item.id === block.id);
+
+          if (!dragged) {
+            return block;
+          }
+
+          return {
+            ...block,
+            x: Math.max(18, Math.min(bounds.width - 24, dragged.x + deltaX)),
+            y: Math.max(18, Math.min(bounds.height - 24, dragged.y + deltaY))
+          };
+        }),
+        symbols: current.symbols.map((symbol) => {
+          const dragged = dragRef.current?.groupSymbolPositions.find((item) => item.id === symbol.id);
+
+          if (!dragged) {
+            return symbol;
+          }
+
+          return {
+            ...symbol,
+            x: Math.max(18, Math.min(bounds.width - 24, dragged.x + deltaX)),
+            y: Math.max(18, Math.min(bounds.height - 24, dragged.y + deltaY))
+          };
+        })
       }));
     }
 
     function handleMouseUp() {
       dragRef.current = null;
+      pendingSelectionRef.current = null;
+      setSelectionRect(null);
     }
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -478,7 +561,7 @@ export function MathWorkbook() {
     } satisfies FloatingSymbol;
   }
 
-  function getCanvasDropPosition(clientX: number, clientY: number) {
+  function getCanvasDropPosition(clientX: number, clientY: number, offsetX = 0, offsetY = 0) {
     const canvas = canvasRef.current;
 
     if (!canvas) {
@@ -488,8 +571,8 @@ export function MathWorkbook() {
     const bounds = canvas.getBoundingClientRect();
 
     return {
-      x: Math.max(18, Math.min(bounds.width - 24, Math.round(clientX - bounds.left))),
-      y: Math.max(18, Math.min(bounds.height - 24, Math.round(clientY - bounds.top)))
+      x: Math.max(18, Math.min(bounds.width - 24, Math.round(clientX - bounds.left - offsetX))),
+      y: Math.max(18, Math.min(bounds.height - 24, Math.round(clientY - bounds.top - offsetY)))
     };
   }
 
@@ -503,6 +586,101 @@ export function MathWorkbook() {
     }
 
     return null;
+  }
+
+  function clearFloatingSelection() {
+    setSelectedBlockIds([]);
+    setSelectedSymbolIds([]);
+  }
+
+  function selectSingleBlock(blockId: string) {
+    setSelectedBlockIds([blockId]);
+    setSelectedSymbolIds([]);
+  }
+
+  function selectSingleSymbol(symbolId: string) {
+    setSelectedSymbolIds([symbolId]);
+    setSelectedBlockIds([]);
+  }
+
+  function getCanvasPoint(clientX: number, clientY: number) {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return { x: 0, y: 0 };
+    }
+
+    const bounds = canvas.getBoundingClientRect();
+
+    return {
+      x: Math.max(0, Math.min(bounds.width, clientX - bounds.left)),
+      y: Math.max(0, Math.min(bounds.height, clientY - bounds.top))
+    };
+  }
+
+  function normalizeSelectionRect(rect: Exclude<SelectionRect, null>) {
+    return {
+      left: Math.min(rect.originX, rect.currentX),
+      top: Math.min(rect.originY, rect.currentY),
+      right: Math.max(rect.originX, rect.currentX),
+      bottom: Math.max(rect.originY, rect.currentY)
+    };
+  }
+
+  function updateSelectionFromRect(rect: Exclude<SelectionRect, null>) {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const canvasBounds = canvas.getBoundingClientRect();
+    const normalized = normalizeSelectionRect(rect);
+    const nextBlockIds = blocksRef.current
+      .filter((block) => {
+        const node = blockNodeRefs.current[block.id];
+
+        if (!node) {
+          return false;
+        }
+
+        const bounds = node.getBoundingClientRect();
+        const left = bounds.left - canvasBounds.left;
+        const top = bounds.top - canvasBounds.top;
+        const right = left + bounds.width;
+        const bottom = top + bounds.height;
+
+        return right >= normalized.left && left <= normalized.right && bottom >= normalized.top && top <= normalized.bottom;
+      })
+      .map((block) => block.id);
+    const nextSymbolIds = symbolsRef.current
+      .filter((symbol) => {
+        const node = symbolNodeRefs.current[symbol.id];
+
+        if (!node) {
+          return false;
+        }
+
+        const bounds = node.getBoundingClientRect();
+        const left = bounds.left - canvasBounds.left;
+        const top = bounds.top - canvasBounds.top;
+        const right = left + bounds.width;
+        const bottom = top + bounds.height;
+
+        return right >= normalized.left && left <= normalized.right && bottom >= normalized.top && top <= normalized.bottom;
+      })
+      .map((symbol) => symbol.id);
+
+    setSelectedBlockIds(nextBlockIds);
+    setSelectedSymbolIds(nextSymbolIds);
+  }
+
+  function beginAreaSelection(clientX: number, clientY: number) {
+    const point = getCanvasPoint(clientX, clientY);
+    pendingSelectionRef.current = { originX: point.x, originY: point.y, started: false };
+    setSelectionRect(null);
+    clearFloatingSelection();
+    setOpenMenu(null);
   }
 
   function syncText() {
@@ -654,7 +832,7 @@ export function MathWorkbook() {
           block.id === modalState.block.id ? modalState.block : block
         )
       }));
-      setSelectedBlockId(modalState.block.id);
+      selectSingleBlock(modalState.block.id);
       setModalState(null);
       return;
     }
@@ -663,7 +841,7 @@ export function MathWorkbook() {
       ...current,
       blocks: [...current.blocks, modalState.block]
     }));
-    setSelectedBlockId(modalState.block.id);
+    selectSingleBlock(modalState.block.id);
     setModalState(null);
   }
 
@@ -672,7 +850,7 @@ export function MathWorkbook() {
       ...current,
       blocks: current.blocks.filter((block) => block.id !== blockId)
     }));
-    setSelectedBlockId((current) => (current === blockId ? null : current));
+    setSelectedBlockIds((current) => current.filter((id) => id !== blockId));
   }
 
   function removeSymbol(symbolId: string) {
@@ -680,7 +858,7 @@ export function MathWorkbook() {
       ...current,
       symbols: current.symbols.filter((symbol) => symbol.id !== symbolId)
     }));
-    setSelectedSymbolId((current) => (current === symbolId ? null : current));
+    setSelectedSymbolIds((current) => current.filter((id) => id !== symbolId));
   }
 
   function updateSymbolStyle(symbolId: string, updates: Partial<Pick<FloatingSymbol, "fontSize" | "color">>) {
@@ -690,6 +868,19 @@ export function MathWorkbook() {
         symbol.id === symbolId ? { ...symbol, ...updates } : symbol
       )
     }));
+  }
+
+  function removeSelectedItems() {
+    if (selectedCount === 0) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      blocks: current.blocks.filter((block) => !selectedBlockIds.includes(block.id)),
+      symbols: current.symbols.filter((symbol) => !selectedSymbolIds.includes(symbol.id))
+    }));
+    clearFloatingSelection();
   }
 
   function startDragging(itemType: "block" | "symbol", itemId: string, x: number, y: number, event: ReactMouseEvent<HTMLElement>) {
@@ -703,28 +894,78 @@ export function MathWorkbook() {
     }
 
     const bounds = canvas.getBoundingClientRect();
+    const keepCurrentSelection =
+      itemType === "block"
+        ? selectedBlockIdsRef.current.includes(itemId)
+        : selectedSymbolIdsRef.current.includes(itemId);
+    const currentBlockIds = keepCurrentSelection
+      ? selectedBlockIdsRef.current
+      : itemType === "block"
+        ? [itemId]
+        : [];
+    const currentSymbolIds = keepCurrentSelection
+      ? selectedSymbolIdsRef.current
+      : itemType === "symbol"
+        ? [itemId]
+        : [];
+
     dragRef.current = {
       itemType,
       itemId,
       pointerOffsetX: event.clientX - bounds.left - x,
-      pointerOffsetY: event.clientY - bounds.top - y
+      pointerOffsetY: event.clientY - bounds.top - y,
+      groupBlockPositions: blocksRef.current
+        .filter((block) => currentBlockIds.includes(block.id))
+        .map((block) => ({ id: block.id, x: block.x, y: block.y })),
+      groupSymbolPositions: symbolsRef.current
+        .filter((symbol) => currentSymbolIds.includes(symbol.id))
+        .map((symbol) => ({ id: symbol.id, x: symbol.x, y: symbol.y })),
+      anchorX: x,
+      anchorY: y
     };
-    if (itemType === "block") {
-      setSelectedBlockId(itemId);
-      setSelectedSymbolId(null);
-      return;
-    }
 
-    setSelectedSymbolId(itemId);
-    setSelectedBlockId(null);
+    if (!keepCurrentSelection) {
+      if (itemType === "block") {
+        selectSingleBlock(itemId);
+      } else {
+        selectSingleSymbol(itemId);
+      }
+    }
   }
 
   function handleToolDragStart(payload: ToolbarDragPayload, event: ReactDragEvent<HTMLButtonElement>) {
+    const source = event.currentTarget;
+    const rect = source.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    const previewNode = source.cloneNode(true) as HTMLElement;
+
+    previewNode.style.position = "fixed";
+    previewNode.style.top = "-200vh";
+    previewNode.style.left = "-200vw";
+    previewNode.style.pointerEvents = "none";
+    previewNode.style.zIndex = "9999";
+    previewNode.style.boxShadow = "0 12px 30px rgba(31, 45, 61, 0.12)";
+    previewNode.style.opacity = "0.92";
+    document.body.append(previewNode);
+
+    toolbarDragMetaRef.current = { offsetX, offsetY, previewNode };
     toolbarDragUntilRef.current = Date.now() + 350;
     event.dataTransfer.effectAllowed = "copy";
     event.dataTransfer.setData("application/x-maths-tool", JSON.stringify(payload));
     event.dataTransfer.setData("text/plain", payload.kind === "shortcut" ? payload.shortcutId : payload.toolId);
+    event.dataTransfer.setDragImage(previewNode, offsetX, offsetY);
     setOpenMenu(null);
+  }
+
+  function handleToolDragEnd() {
+    const previewNode = toolbarDragMetaRef.current?.previewNode;
+
+    if (previewNode) {
+      previewNode.remove();
+    }
+
+    toolbarDragMetaRef.current = null;
   }
 
   function shouldIgnoreToolbarClick() {
@@ -765,8 +1006,7 @@ export function MathWorkbook() {
     event.preventDefault();
     event.stopPropagation();
     setIsCanvasDropActive(false);
-    setSelectedBlockId(null);
-    setSelectedSymbolId(null);
+    clearFloatingSelection();
 
     let payload: ToolbarDragPayload | null = null;
 
@@ -780,7 +1020,14 @@ export function MathWorkbook() {
       return;
     }
 
-    const position = getCanvasDropPosition(event.clientX, event.clientY);
+    const position = getCanvasDropPosition(
+      event.clientX,
+      event.clientY,
+      toolbarDragMetaRef.current?.offsetX ?? 0,
+      toolbarDragMetaRef.current?.offsetY ?? 0
+    );
+
+    handleToolDragEnd();
 
     if (payload.kind === "structured") {
       setModalState({
@@ -802,7 +1049,7 @@ export function MathWorkbook() {
       ...current,
       symbols: [...current.symbols, symbol]
     }));
-    setSelectedSymbolId(symbol.id);
+    selectSingleSymbol(symbol.id);
   }
 
   function resetDocument() {
@@ -810,8 +1057,7 @@ export function MathWorkbook() {
     setState(DEFAULT_STATE);
     setOpenMenu(null);
     setModalState(null);
-    setSelectedBlockId(null);
-    setSelectedSymbolId(null);
+    clearFloatingSelection();
     selectionRef.current = null;
     if (editorRef.current) {
       editorRef.current.innerHTML = DEFAULT_TEXT_HTML;
@@ -1036,6 +1282,7 @@ export function MathWorkbook() {
                   draggable
                   title={tool.hint}
                   onDragStart={(event) => handleToolDragStart({ kind: "structured", toolId: tool.id }, event)}
+                  onDragEnd={handleToolDragEnd}
                   onClick={() => {
                     if (shouldIgnoreToolbarClick()) {
                       return;
@@ -1081,6 +1328,7 @@ export function MathWorkbook() {
                   draggable
                   title={shortcut.hint}
                   onDragStart={(event) => handleToolDragStart({ kind: "shortcut", shortcutId: shortcut.id }, event)}
+                  onDragEnd={handleToolDragEnd}
                   onClick={() => {
                     if (shouldIgnoreToolbarClick()) {
                       return;
@@ -1201,6 +1449,15 @@ export function MathWorkbook() {
               ))}
             </div>
 
+            {selectedCount > 1 ? (
+              <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
+                <span className="selected-block-label">{selectedCount} éléments sélectionnés</span>
+                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={removeSelectedItems}>
+                  Supprimer
+                </button>
+              </div>
+            ) : null}
+
             {selectedBlock ? (
               <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
                 <span className="selected-block-label">{getBlockTitle(selectedBlock)}</span>
@@ -1257,9 +1514,13 @@ export function MathWorkbook() {
             onDragOver={handleCanvasDragOver}
             onDragLeave={handleCanvasDragLeave}
             onDrop={handleCanvasDrop}
-            onMouseDown={() => {
-              setSelectedBlockId(null);
-              setSelectedSymbolId(null);
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                beginAreaSelection(event.clientX, event.clientY);
+                return;
+              }
+
+              clearFloatingSelection();
               setOpenMenu(null);
             }}
           >
@@ -1268,6 +1529,13 @@ export function MathWorkbook() {
               className="canvas-editor"
               contentEditable
               suppressContentEditableWarning
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  beginAreaSelection(event.clientX, event.clientY);
+                } else {
+                  clearFloatingSelection();
+                }
+              }}
               onDragOver={handleCanvasDragOver}
               onDragLeave={handleCanvasDragLeave}
               onDrop={handleCanvasDrop}
@@ -1281,11 +1549,12 @@ export function MathWorkbook() {
             {state.blocks.map((block) => (
               <article
                 key={block.id}
-                className={`floating-math-block ${selectedBlockId === block.id ? "floating-math-block-selected" : ""}`}
+                ref={(node) => {
+                  blockNodeRefs.current[block.id] = node;
+                }}
+                className={`floating-math-block ${selectedBlockIds.includes(block.id) ? "floating-math-block-selected" : ""}`}
                 style={{ left: `${block.x}px`, top: `${block.y}px` }}
                 onMouseDown={(event) => {
-                  setSelectedBlockId(block.id);
-                  setSelectedSymbolId(null);
                   startDragging("block", block.id, block.x, block.y, event);
                 }}
                 onDoubleClick={(event) => {
@@ -1301,17 +1570,30 @@ export function MathWorkbook() {
               <button
                 key={symbol.id}
                 type="button"
-                className={`floating-math-symbol ${selectedSymbolId === symbol.id ? "floating-math-symbol-selected" : ""}`}
+                ref={(node) => {
+                  symbolNodeRefs.current[symbol.id] = node;
+                }}
+                className={`floating-math-symbol ${selectedSymbolIds.includes(symbol.id) ? "floating-math-symbol-selected" : ""}`}
                 style={{ left: `${symbol.x}px`, top: `${symbol.y}px`, color: symbol.color, fontSize: `${symbol.fontSize}rem` }}
                 onMouseDown={(event) => {
-                  setSelectedSymbolId(symbol.id);
-                  setSelectedBlockId(null);
                   startDragging("symbol", symbol.id, symbol.x, symbol.y, event);
                 }}
               >
                 {symbol.content}
               </button>
             ))}
+
+            {selectionRect ? (
+              <div
+                className="canvas-selection-rect"
+                style={{
+                  left: `${Math.min(selectionRect.originX, selectionRect.currentX)}px`,
+                  top: `${Math.min(selectionRect.originY, selectionRect.currentY)}px`,
+                  width: `${Math.abs(selectionRect.currentX - selectionRect.originX)}px`,
+                  height: `${Math.abs(selectionRect.currentY - selectionRect.originY)}px`
+                }}
+              />
+            ) : null}
           </div>
         </div>
       </section>
