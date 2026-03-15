@@ -15,8 +15,6 @@ import {
 } from "react";
 import { toBlob, toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
-import { Document, ImageRun, Packer, Paragraph, TextRun } from "docx";
-import { saveAs } from "file-saver";
 
 type StudyMode = "college" | "lycee";
 type SheetStyle = "seyes" | "large-grid" | "small-grid" | "blank";
@@ -937,7 +935,7 @@ export function MathWorkbook() {
   const [canvasQuickMenu, setCanvasQuickMenu] = useState<CanvasQuickMenu>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuides>({ x: null, y: null });
   const [isHydrated, setIsHydrated] = useState(false);
-  const [isExporting, setIsExporting] = useState<"pdf" | "word" | null>(null);
+  const [isExporting, setIsExporting] = useState<"pdf" | "png" | null>(null);
   const [isCanvasDropActive, setIsCanvasDropActive] = useState(false);
   const [selectionRect, setSelectionRect] = useState<SelectionRect>(null);
   const [isCanvasInteracting, setIsCanvasInteracting] = useState(false);
@@ -3225,76 +3223,37 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }
   }
 
-  async function exportWord() {
+  async function exportPng() {
     const exportNode = createExportCanvasNode();
 
     if (!exportNode) {
       return;
     }
 
-    setIsExporting("word");
+    const previewWindow = window.open("", "_blank");
+
+    setIsExporting("png");
 
     try {
-      const blob = await toBlob(exportNode.node, {
+      const imageUrl = await toPng(exportNode.node, {
         backgroundColor: "#fffdf8",
         cacheBust: true,
         skipFonts: true,
         pixelRatio: 2
       });
 
-      if (!blob) {
+      if (!previewWindow) {
         return;
       }
 
-      const arrayBuffer = await blob.arrayBuffer();
-      const tempImageUrl = URL.createObjectURL(blob);
-      const image = new Image();
-      image.src = tempImageUrl;
-
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("Word export image error"));
-      });
-
-      URL.revokeObjectURL(tempImageUrl);
-
-      const documentFile = new Document({
-        sections: [
-          {
-            children: [
-              new Paragraph({
-                spacing: { after: 180 },
-                children: [new TextRun({ text: state.title, bold: true, size: 34 })]
-              }),
-              new Paragraph({
-                spacing: { after: 180 },
-                children: [
-                  new TextRun({
-                    text: state.mode === "college" ? "Mode collège" : "Mode lycée",
-                    italics: true,
-                    size: 24
-                  })
-                ]
-              }),
-              new Paragraph({
-                children: [
-                  new ImageRun({
-                    type: "png",
-                    data: arrayBuffer,
-                    transformation: {
-                      width: 595,
-                      height: 842
-                    }
-                  })
-                ]
-              })
-            ]
-          }
-        ]
-      });
-
-      const docBlob = await Packer.toBlob(documentFile);
-      saveAs(docBlob, `${safeFileName(state.title) || "maths-facile"}.docx`);
+      const safeTitle = state.title || "maths-facile";
+      previewWindow.document.title = `${safeTitle}.png`;
+      previewWindow.document.body.style.margin = "0";
+      previewWindow.document.body.style.background = "#1f2430";
+      previewWindow.document.body.style.display = "grid";
+      previewWindow.document.body.style.placeItems = "center";
+      previewWindow.document.body.innerHTML = `<img src="${imageUrl}" alt="${safeTitle}" style="max-width:100vw;max-height:100vh;display:block;background:white;" />`;
+      previewWindow.document.close();
     } finally {
       exportNode.cleanup();
       setIsExporting(null);
@@ -3647,8 +3606,8 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   <button type="button" className="toolbar-action primary" onClick={exportPdf} disabled={isExporting !== null}>
                     {isExporting === "pdf" ? "Création PDF..." : "PDF"}
                   </button>
-                  <button type="button" className="toolbar-action secondary" onClick={exportWord} disabled={isExporting !== null}>
-                    {isExporting === "word" ? "Création Word..." : "Word"}
+                  <button type="button" className="toolbar-action secondary" onClick={exportPng} disabled={isExporting !== null}>
+                    {isExporting === "png" ? "Création PNG..." : "PNG"}
                   </button>
                   <button type="button" className="toolbar-action ghost" onClick={() => window.print()}>
                     Imprimer
