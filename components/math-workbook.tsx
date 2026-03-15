@@ -19,7 +19,7 @@ import { jsPDF } from "jspdf";
 type StudyMode = "college" | "lycee";
 type SheetStyle = "seyes" | "large-grid" | "small-grid" | "blank";
 type StructuredTool = "fraction" | "division" | "power" | "root";
-type UtilityMenu = "settings" | "export" | "highlight" | null;
+type UtilityMenu = "highlight" | null;
 
 type FractionBlock = {
   id: string;
@@ -159,6 +159,10 @@ type ModalState =
       block: MathBlock;
     }
   | null;
+
+type ConfirmResetState = {
+  open: boolean;
+} | null;
 
 type InlineShortcutItem = {
   id: string;
@@ -924,6 +928,7 @@ export function MathWorkbook() {
   const [historyFuture, setHistoryFuture] = useState<WriterState[]>([]);
   const [openMenu, setOpenMenu] = useState<UtilityMenu>(null);
   const [modalState, setModalState] = useState<ModalState>(null);
+  const [confirmResetState, setConfirmResetState] = useState<ConfirmResetState>(null);
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [selectedSymbolIds, setSelectedSymbolIds] = useState<string[]>([]);
   const [selectedTextBoxIds, setSelectedTextBoxIds] = useState<string[]>([]);
@@ -994,6 +999,18 @@ export function MathWorkbook() {
           content: item.content.trimStart()
         }))
       ),
+    [activeInlineShortcuts]
+  );
+  const commonInlineShortcuts = useMemo(
+    () => activeInlineShortcuts.flatMap((group) => group.items).filter((item) => item.modes.includes("college")),
+    [activeInlineShortcuts]
+  );
+  const lyceeInlineShortcuts = useMemo(
+    () => INLINE_SHORTCUT_GROUPS.flatMap((group) => group.items).filter((item) => item.modes.length === 1 && item.modes[0] === "lycee"),
+    []
+  );
+  const visibleLyceeInlineShortcuts = useMemo(
+    () => activeInlineShortcuts.flatMap((group) => group.items).filter((item) => item.modes.length === 1 && item.modes[0] === "lycee"),
     [activeInlineShortcuts]
   );
   const selectedBlockId = selectedBlockIds.length === 1 && selectedSymbolIds.length === 0 && selectedTextBoxIds.length === 0 && selectedStrokeIds.length === 0 ? selectedBlockIds[0] : null;
@@ -3074,11 +3091,16 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
   }
 
   function resetDocument() {
+    setConfirmResetState({ open: true });
+  }
+
+  function confirmResetDocument() {
     window.localStorage.removeItem(STORAGE_KEY);
     setState(createDefaultState());
     setOpenMenu(null);
     setCanvasQuickMenu(null);
     setModalState(null);
+    setConfirmResetState(null);
     clearFloatingSelection();
     selectionRef.current = null;
     if (editorRef.current) {
@@ -3378,50 +3400,45 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     <main className="editor-shell">
       <header className="top-toolbar">
         <div className="top-toolbar-inner">
-          <div className="toolbar-row toolbar-row-primary">
+          <div className="toolbar-row toolbar-row-primary sidebar-block sidebar-block-compact">
+            <p className="sidebar-block-label">Document</p>
             <div className="toolbar-icon-actions">
               <button
                 type="button"
-                className="toolbar-icon-button"
-                aria-label="Annuler"
-                title="Annuler"
-                disabled={historyPast.length === 0}
-                onClick={undoHistory}
+                className="toolbar-icon-button toolbar-icon-button-text"
+                aria-label="Nouveau document"
+                title="Nouveau"
+                onClick={resetDocument}
               >
-                ↶
-              </button>
-              <button
-                type="button"
-                className="toolbar-icon-button"
-                aria-label="Refaire"
-                title="Refaire"
-                disabled={historyFuture.length === 0}
-                onClick={redoHistory}
-              >
-                ↷
-              </button>
-              <button
-                type="button"
-                className={`toolbar-icon-button ${openMenu === "export" ? "toolbar-icon-button-active" : ""}`}
-                aria-label="Exporter"
-                title="Exporter"
-                onClick={() => toggleMenu("export")}
-              >
-                ⤓
-              </button>
-              <button
-                type="button"
-                className={`toolbar-icon-button ${openMenu === "settings" ? "toolbar-icon-button-active" : ""}`}
-                aria-label="Réglages"
-                title="Réglages"
-                onClick={() => toggleMenu("settings")}
-              >
-                ⚙
+                Nouveau
               </button>
             </div>
           </div>
 
-          <div className="toolbar-row toolbar-row-secondary">
+          <div className="toolbar-row sidebar-block sidebar-block-compact" aria-label="Niveau">
+            <p className="sidebar-block-label">Niveau</p>
+            <div className="panel-chip-row">
+              <button
+                type="button"
+                className={`chip-button ${state.mode === "college" ? "chip-button-active" : ""}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setState((current) => ({ ...current, mode: "college" }))}
+              >
+                Collège
+              </button>
+              <button
+                type="button"
+                className={`chip-button ${state.mode === "lycee" ? "chip-button-active" : ""}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setState((current) => ({ ...current, mode: "lycee" }))}
+              >
+                Lycée
+              </button>
+            </div>
+          </div>
+
+          <div className="toolbar-row toolbar-row-secondary sidebar-block">
+            <p className="sidebar-block-label">Créer</p>
             <div className="toolbar-shortcut-group" aria-label="Outils d'insertion">
               <button
                 type="button"
@@ -3454,11 +3471,12 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                 </button>
               ))}
             </div>
+          </div>
 
-            <div className="toolbar-separator" aria-hidden="true" />
-
-            <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis maths">
-              {activeInlineShortcuts.flatMap((group) => group.items).map((shortcut) => (
+          <div className="toolbar-row toolbar-row-secondary sidebar-block">
+            <p className="sidebar-block-label">Maths courants</p>
+            <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis maths courants">
+              {commonInlineShortcuts.map((shortcut) => (
                 <button
                   key={shortcut.id}
                   type="button"
@@ -3481,7 +3499,38 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             </div>
           </div>
 
-          <div className="toolbar-row toolbar-row-format" aria-label="Mise en forme">
+          <div className="toolbar-row toolbar-row-secondary sidebar-block">
+            <p className="sidebar-block-label">Outils lycée</p>
+            {state.mode === "lycee" ? (
+              <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis lycée">
+                {visibleLyceeInlineShortcuts.map((shortcut) => (
+                  <button
+                    key={shortcut.id}
+                    type="button"
+                    className="toolbar-shortcut toolbar-shortcut-symbol"
+                    draggable
+                    title={shortcut.hint}
+                    onDragStart={(event) => handleToolDragStart({ kind: "shortcut", shortcutId: shortcut.id }, event)}
+                    onDragEnd={handleToolDragEnd}
+                    onClick={() => {
+                      if (shouldIgnoreToolbarClick()) {
+                        return;
+                      }
+
+                      insertTextAtCursor(shortcut.content);
+                    }}
+                  >
+                    {renderShortcutGlyph(shortcut)}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="sidebar-helper">Passe en mode lycée pour afficher {lyceeInlineShortcuts.length} outils supplémentaires.</p>
+            )}
+          </div>
+
+          <div className="toolbar-row toolbar-row-format sidebar-block" aria-label="Mise en forme">
+            <p className="sidebar-block-label">Mise en forme</p>
             <div className="editor-local-toolbar-group">
               <button type="button" className="chip-button chip-button-compact" aria-label="Gras" title="Gras" onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasBold}>
                 B
@@ -3594,62 +3643,31 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
           </div>
         </div>
 
-        {openMenu ? (
-          <div className="toolbar-popover-shell">
-            {openMenu === "export" ? (
-              <section className="toolbar-panel toolbar-popover-panel toolbar-file-panel" aria-label="Exporter">
-                <div className="panel-block">
-                  <h2>Exporter</h2>
-                  <p className="toolbar-helper">Enregistre la feuille ou lance l’impression.</p>
-                </div>
-                <div className="panel-chip-row">
-                  <button type="button" className="toolbar-action primary" onClick={exportPdf} disabled={isExporting !== null}>
-                    {isExporting === "pdf" ? "Création PDF..." : "PDF"}
-                  </button>
-                  <button type="button" className="toolbar-action secondary" onClick={exportPng} disabled={isExporting !== null}>
-                    {isExporting === "png" ? "Création PNG..." : "PNG"}
-                  </button>
-                  <button type="button" className="toolbar-action ghost" onClick={() => window.print()}>
-                    Imprimer
-                  </button>
-                  <button type="button" className="toolbar-action ghost" onClick={resetDocument}>
-                    Nouveau
-                  </button>
-                </div>
-              </section>
-            ) : null}
-
-            {openMenu === "settings" ? (
-              <section className="toolbar-panel toolbar-popover-panel toolbar-settings-panel" aria-label="Réglages">
-                <div className="panel-block">
-                  <h2>Réglages</h2>
-                  <p className="toolbar-helper">Choisis le niveau pour adapter les raccourcis affichés.</p>
-                </div>
-                <div className="panel-chip-row">
-                  <button
-                    type="button"
-                    className={`chip-button ${state.mode === "college" ? "chip-button-active" : ""}`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => setState((current) => ({ ...current, mode: "college" }))}
-                  >
-                    Collège
-                  </button>
-                  <button
-                    type="button"
-                    className={`chip-button ${state.mode === "lycee" ? "chip-button-active" : ""}`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => setState((current) => ({ ...current, mode: "lycee" }))}
-                  >
-                    Lycée
-                  </button>
-                </div>
-              </section>
-            ) : null}
-          </div>
-        ) : null}
       </header>
 
       <section className="editor-stage">
+        <div className="sheet-action-bar">
+          <div className="sheet-action-group">
+            <button type="button" className="toolbar-action ghost" onClick={undoHistory} disabled={historyPast.length === 0}>
+              Annuler
+            </button>
+            <button type="button" className="toolbar-action ghost" onClick={redoHistory} disabled={historyFuture.length === 0}>
+              Refaire
+            </button>
+          </div>
+          <div className="sheet-action-group">
+            <button type="button" className="toolbar-action primary" onClick={exportPdf} disabled={isExporting !== null}>
+              {isExporting === "pdf" ? "Création PDF..." : "PDF"}
+            </button>
+            <button type="button" className="toolbar-action secondary" onClick={exportPng} disabled={isExporting !== null}>
+              {isExporting === "png" ? "Création PNG..." : "PNG"}
+            </button>
+            <button type="button" className="toolbar-action ghost" onClick={() => window.print()}>
+              Imprimer
+            </button>
+          </div>
+        </div>
+
         <div className="editor-sheet">
           <div className="editor-sheet-head">
             <div>
@@ -4146,6 +4164,28 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                 </div>
                 {renderMathPreview(modalState.block)}
               </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {confirmResetState ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setConfirmResetState(null)}>
+          <section className="block-modal" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title" onClick={(event) => event.stopPropagation()}>
+            <div className="block-modal-head">
+              <div>
+                <p className="card-kind">Confirmation</p>
+                <h2 id="reset-modal-title">Créer un nouveau document ?</h2>
+                <p className="toolbar-helper">La feuille actuelle sera effacée et remplacée par un nouveau devoir.</p>
+              </div>
+              <div className="card-actions">
+                <button type="button" className="small-action" onClick={() => setConfirmResetState(null)}>
+                  Annuler
+                </button>
+                <button type="button" className="small-action primary-inline-action" onClick={confirmResetDocument}>
+                  Nouveau
+                </button>
+              </div>
             </div>
           </section>
         </div>

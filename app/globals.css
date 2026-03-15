@@ -55,9 +55,13 @@ button {
 }
 
 .editor-shell {
-  width: min(1320px, calc(100% - 1rem));
+  display: grid;
+  grid-template-columns: 19.5rem minmax(0, 1fr);
+  gap: 1rem;
+  width: min(1520px, calc(100% - 1rem));
   margin: 0 auto;
-  padding: 0 0 1.5rem;
+  padding: 0.75rem 0 1.5rem;
+  align-items: start;
 }
 
 .top-toolbar,
@@ -70,27 +74,81 @@ button {
 
 .top-toolbar {
   position: sticky;
-  top: 0;
-  left: 50%;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
+  top: 0.75rem;
+  width: 100%;
+  height: calc(100vh - 1.5rem);
+  max-height: calc(100vh - 1.5rem);
   z-index: 20;
-  padding: 0.55rem 1rem 0.65rem;
+  padding: 0.9rem;
   overflow: visible;
-  border-radius: 0 0 28px 28px;
+  border-radius: 28px;
   backdrop-filter: blur(18px);
 }
 
 .editor-stage {
-  margin-top: 1rem;
+  min-height: calc(100vh - 1.5rem);
   padding: 1rem;
+  min-width: 0;
+}
+
+.sheet-action-bar {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 15;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  background: rgba(255, 251, 244, 0.9);
+  box-shadow: 0 18px 36px rgba(58, 41, 17, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.sheet-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
 }
 
 .top-toolbar-inner {
   display: grid;
-  gap: 0.5rem;
-  max-width: 1560px;
-  margin: 0 auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 0.8rem;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+  max-width: none;
+  margin: 0;
+}
+
+.sidebar-block {
+  display: grid;
+  gap: 0.65rem;
+  align-content: start;
+}
+
+.sidebar-block-compact {
+  gap: 0.45rem;
+}
+
+.sidebar-block-label {
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 68%, white);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sidebar-helper {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .toolbar-row {
@@ -102,11 +160,14 @@ button {
 }
 
 .toolbar-row-primary {
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 
 .toolbar-row-secondary {
-  padding-bottom: 0.1rem;
+  padding: 0.7rem 0.75rem 0.75rem;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.58);
 }
 
 .toolbar-separator {
@@ -122,6 +183,7 @@ button {
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.76);
   background: rgba(255, 255, 255, 0.58);
+  align-content: start;
 }
 
 .toolbar-row-format .chip-button {
@@ -358,6 +420,14 @@ button {
   line-height: 1;
 }
 
+.toolbar-icon-button-text {
+  width: auto;
+  min-width: 5.75rem;
+  padding-inline: 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
 .toolbar-icon-button-active {
   background: var(--ink);
   color: #fffdf9;
@@ -371,9 +441,10 @@ button {
 
 .toolbar-popover-shell {
   position: absolute;
-  top: calc(100% - 0.15rem);
-  right: 1rem;
-  width: min(30rem, calc(100vw - 1rem));
+  top: 0;
+  left: calc(100% + 0.8rem);
+  right: auto;
+  width: min(24rem, calc(100vw - 22rem));
   z-index: 25;
   pointer-events: none;
 }
@@ -1297,15 +1368,39 @@ input {
   display: none;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
+  .editor-shell {
+    grid-template-columns: 1fr;
+  }
+
   .top-toolbar {
-    padding-inline: 0.75rem;
+    top: 0;
+    height: auto;
+    max-height: none;
+    padding: 0.7rem 0.8rem;
+  }
+
+  .editor-stage {
+    min-height: 0;
+  }
+
+  .top-toolbar-inner {
+    grid-template-rows: none;
+    height: auto;
+    overflow-y: visible;
+    padding-right: 0;
+  }
+
+  .toolbar-popover-shell {
+    top: calc(100% + 0.35rem);
+    left: 0;
+    width: min(30rem, calc(100vw - 1rem));
   }
 }
 
 @media (max-width: 760px) {
   .editor-shell {
-    width: min(100% - 0.7rem, 1320px);
+    width: min(100% - 0.7rem, 1520px);
   }
 
   .top-toolbar,
@@ -1322,7 +1417,7 @@ input {
   }
 
   .top-toolbar {
-    padding: 0 0.7rem;
+    padding: 0.7rem;
   }
 
   .top-toolbar-inner {
@@ -1376,7 +1471,16 @@ input {
 
   .toolbar-popover-shell {
     width: calc(100vw - 1rem);
-    right: 0.5rem;
+    left: 0;
+  }
+
+  .sheet-action-bar {
+    top: 0.5rem;
+    padding: 0.7rem 0.75rem;
+  }
+
+  .sheet-action-group {
+    width: 100%;
   }
 
   .math-inline-image {
