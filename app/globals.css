@@ -16,6 +16,7 @@
   --radius-md: 16px;
   --font-display: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
   --font-body: "Segoe UI", "Candara", "Trebuchet MS", sans-serif;
+  --canvas-type-size: 1.18rem;
 }
 
 * {
@@ -511,7 +512,7 @@ input {
     repeating-linear-gradient(180deg, transparent 0, transparent 2.95rem, var(--paper-line) 2.95rem, var(--paper-line) 3.02rem),
     var(--paper);
   border: 1px solid rgba(92, 108, 129, 0.14);
-  font-size: 1.18rem;
+  font-size: var(--canvas-type-size);
   line-height: 1.7;
 }
 
@@ -556,6 +557,7 @@ input {
   border-radius: 0;
   background: transparent;
   border: none;
+  font-size: 1em;
 }
 
 .fraction-layout,
@@ -570,7 +572,7 @@ input {
   display: grid;
   justify-items: center;
   font-size: 1em;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
 }
 
 .fraction-preview-editing {
@@ -593,7 +595,7 @@ input {
   box-shadow: none;
   color: var(--ink);
   font: inherit;
-  font-size: 0.92em;
+  font-size: 1em;
   text-align: center;
 }
 
@@ -626,7 +628,7 @@ input {
   justify-self: center;
   padding: 0 0.1rem 0.18rem 0.65rem;
   text-align: center;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 1em;
 }
 
@@ -634,7 +636,7 @@ input {
   grid-area: divisor;
   align-self: center;
   padding: 0.48rem 0.5rem 0 0;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 1em;
 }
 
@@ -649,7 +651,7 @@ input {
 }
 
 .division-dividend {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 1em;
 }
 
@@ -657,13 +659,13 @@ input {
   justify-self: end;
   margin-right: 0.08rem;
   color: color-mix(in srgb, var(--ink) 84%, white);
-  font-size: 0.88em;
+  font-size: 1em;
   line-height: 1.1;
 }
 
 .power-preview {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 1em;
 }
 
@@ -671,7 +673,7 @@ input {
   display: flex;
   align-items: flex-start;
   gap: 0.2rem;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
 }
 
 .root-symbol {
@@ -1170,7 +1172,7 @@ input {
   inset: 0;
   padding: 1.25rem 1.4rem 1.7rem 4.8rem;
   color: var(--ink);
-  font-size: 1.18rem;
+  font-size: var(--canvas-type-size);
   line-height: 1.7;
   outline: none;
 }
@@ -1194,7 +1196,7 @@ input {
   box-shadow: none;
   user-select: none;
   cursor: grab;
-  font-size: 1.18rem;
+  font-size: var(--canvas-type-size);
   line-height: 1.7;
 }
 
@@ -1215,6 +1217,7 @@ input {
   border-radius: 10px;
   background: transparent;
   box-shadow: none;
+  font-size: var(--canvas-type-size);
   line-height: 1.1;
   font-weight: 700;
   user-select: none;
@@ -1238,6 +1241,8 @@ input {
   border-radius: 14px;
   background: transparent;
   cursor: grab;
+  font-size: var(--canvas-type-size);
+  line-height: 1.4;
 }
 
 .floating-text-box-selected {

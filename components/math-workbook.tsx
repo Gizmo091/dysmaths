@@ -173,6 +173,7 @@ const STORAGE_KEY = "maths-facile-free-layout-v1";
 const FLOATING_TEXTBOX_Y_OFFSET = 10;
 const CANVAS_QUICK_MENU_OFFSET_X = 30;
 const MAX_HISTORY_STEPS = 80;
+const DEFAULT_CANVAS_FONT_SIZE_REM = 1.18;
 
 const DEFAULT_TEXT_HTML = [
   "<p><strong>Commence ici :</strong> écris librement ta méthode, tes calculs et ta réponse.</p>",
@@ -747,8 +748,8 @@ export function MathWorkbook() {
     return { id: createId("root"), type, radicand: "", result: "", caption: "", ...position } satisfies MathBlock;
   }
 
-  function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number) {
-    return {
+function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number) {
+  return {
       id: createId("symbol"),
       type: "symbol",
       label: shortcut.label,
@@ -756,9 +757,9 @@ export function MathWorkbook() {
       x,
       y,
       color: COLOR_OPTIONS[0].value,
-      fontSize: 1.18
-    } satisfies FloatingSymbol;
-  }
+      fontSize: DEFAULT_CANVAS_FONT_SIZE_REM
+  } satisfies FloatingSymbol;
+}
 
   function createFloatingTextBox(x: number, y: number) {
     return {
@@ -1467,7 +1468,8 @@ export function MathWorkbook() {
         const col = index % columns;
         const row = Math.floor(index / columns);
         const x = anchorX + colWidths.slice(0, col).reduce((sum, width) => sum + width, 0) + spacing * col;
-        const y = anchorY + rowHeights.slice(0, row).reduce((sum, height) => sum + height, 0) + spacing * row;
+        const rowTop = anchorY + rowHeights.slice(0, row).reduce((sum, height) => sum + height, 0) + spacing * row;
+        const y = rowTop + (rowHeights[row] - item.height) / 2;
 
         return {
           id: item.id,
