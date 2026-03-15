@@ -258,20 +258,97 @@ function cmToPx(cm: number) {
   return mmToPx(cm * 10);
 }
 
+function getDefaultCanvasFontSize(sheetStyle: SheetStyle) {
+  switch (sheetStyle) {
+    case "seyes":
+      return 1.02;
+    case "small-grid":
+      return 0.96;
+    case "large-grid":
+    case "blank":
+    default:
+      return DEFAULT_CANVAS_FONT_SIZE_REM;
+  }
+}
+
+function getDefaultNoteFontSize(sheetStyle: SheetStyle) {
+  return Math.max(0.84, Number((getDefaultCanvasFontSize(sheetStyle) - 0.18).toFixed(2)));
+}
+
 const DEFAULT_TEXT_HTML = "";
 
-const DEFAULT_STATE: WriterState = {
-  title: "Mon devoir de maths",
-  mode: "college",
-  sheetStyle: "seyes",
-  activeColor: DEFAULT_ACTIVE_COLOR,
-  activeHighlightColor: "rgba(255, 226, 92, 0.58)",
-  textHtml: DEFAULT_TEXT_HTML,
-  blocks: [],
-  symbols: [],
-  textBoxes: [],
-  strokes: []
-};
+function createDefaultHeaderTextBoxes(sheetStyle: SheetStyle): FloatingTextBox[] {
+  const metrics = getSheetMetrics(sheetStyle, 16);
+  const fontSize = getDefaultCanvasFontSize(sheetStyle);
+  const fieldHeight = Math.max(24, fontSize * 22);
+  const firstBaseline = metrics.originY + metrics.snapYStep;
+  const secondBaseline = metrics.originY + metrics.snapYStep * 2;
+  const startX = sheetStyle === "seyes" ? cmToPx(5.1) : mmToPx(14);
+  const dateX = mmToPx(145);
+
+  return [
+    {
+      id: createId("text"),
+      type: "textBox",
+      variant: "default",
+      text: "Nom et prénom :",
+      color: DEFAULT_ACTIVE_COLOR,
+      fontSize,
+      fontWeight: 500,
+      fontStyle: "normal",
+      underline: false,
+      highlightColor: null,
+      x: Math.round(startX),
+      y: Math.round(firstBaseline - fieldHeight + 5),
+      width: getTextBoxWidth("Nom et prénom :")
+    },
+    {
+      id: createId("text"),
+      type: "textBox",
+      variant: "default",
+      text: "Classe :",
+      color: DEFAULT_ACTIVE_COLOR,
+      fontSize,
+      fontWeight: 500,
+      fontStyle: "normal",
+      underline: false,
+      highlightColor: null,
+      x: Math.round(startX),
+      y: Math.round(secondBaseline - fieldHeight + 5),
+      width: getTextBoxWidth("Classe :")
+    },
+    {
+      id: createId("text"),
+      type: "textBox",
+      variant: "default",
+      text: "Date :",
+      color: DEFAULT_ACTIVE_COLOR,
+      fontSize,
+      fontWeight: 500,
+      fontStyle: "normal",
+      underline: false,
+      highlightColor: null,
+      x: Math.round(dateX),
+      y: Math.round(secondBaseline - fieldHeight + 5),
+      width: getTextBoxWidth("Date :")
+    }
+  ];
+}
+
+function createDefaultState(sheetStyle: SheetStyle = "seyes"): WriterState {
+  return {
+    title: "Mon devoir de maths",
+    mode: "college",
+    sheetStyle,
+    activeColor: DEFAULT_ACTIVE_COLOR,
+    activeHighlightColor: "rgba(255, 226, 92, 0.58)",
+    textHtml: DEFAULT_TEXT_HTML,
+    blocks: [],
+    symbols: [],
+    textBoxes: createDefaultHeaderTextBoxes(sheetStyle),
+    strokes: []
+  };
+}
 
 const COLOR_OPTIONS = [
   { id: "ink", label: "Encre", value: "#1f2d3d" },
@@ -624,6 +701,16 @@ function getRemPixels() {
 function parseStoredState(raw: string): WriterState | null {
   try {
     const parsed = JSON.parse(raw) as WriterState;
+    const parsedSheetStyle =
+      (parsed as { sheetStyle?: unknown }).sheetStyle === "large-grid" ||
+      (parsed as { sheetStyle?: unknown }).sheetStyle === "small-grid" ||
+      (parsed as { sheetStyle?: unknown }).sheetStyle === "blank" ||
+      (parsed as { sheetStyle?: unknown }).sheetStyle === "seyes"
+        ? (parsed as { sheetStyle: SheetStyle }).sheetStyle
+        : createDefaultState().sheetStyle;
+    const defaultState = createDefaultState(parsedSheetStyle);
+    const defaultFontSize = getDefaultCanvasFontSize(parsedSheetStyle);
+    const defaultNoteFontSize = getDefaultNoteFontSize(parsedSheetStyle);
 
     if (
       typeof parsed.title !== "string" ||
@@ -636,22 +723,16 @@ function parseStoredState(raw: string): WriterState | null {
 
     return {
       ...parsed,
-      sheetStyle:
-        (parsed as { sheetStyle?: unknown }).sheetStyle === "large-grid" ||
-        (parsed as { sheetStyle?: unknown }).sheetStyle === "small-grid" ||
-        (parsed as { sheetStyle?: unknown }).sheetStyle === "blank" ||
-        (parsed as { sheetStyle?: unknown }).sheetStyle === "seyes"
-          ? (parsed as { sheetStyle: SheetStyle }).sheetStyle
-          : DEFAULT_STATE.sheetStyle,
+      sheetStyle: parsedSheetStyle,
       activeColor: typeof (parsed as { activeColor?: unknown }).activeColor === "string" ? parsed.activeColor : DEFAULT_ACTIVE_COLOR,
       activeHighlightColor:
         typeof (parsed as { activeHighlightColor?: unknown }).activeHighlightColor === "string"
           ? parsed.activeHighlightColor
-          : DEFAULT_STATE.activeHighlightColor,
+          : defaultState.activeHighlightColor,
       blocks: parsed.blocks.map((block) => ({
         ...block,
         color: typeof (block as { color?: unknown }).color === "string" ? (block as { color: string }).color : DEFAULT_ACTIVE_COLOR,
-        fontSize: typeof (block as { fontSize?: unknown }).fontSize === "number" ? (block as { fontSize: number }).fontSize : DEFAULT_CANVAS_FONT_SIZE_REM,
+        fontSize: typeof (block as { fontSize?: unknown }).fontSize === "number" ? (block as { fontSize: number }).fontSize : defaultFontSize,
         fontWeight: typeof (block as { fontWeight?: unknown }).fontWeight === "number" ? (block as { fontWeight: number }).fontWeight : 500,
         fontStyle: (block as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal",
         underline: (block as { underline?: unknown }).underline === true,
@@ -661,7 +742,7 @@ function parseStoredState(raw: string): WriterState | null {
         ? parsed.symbols.map((symbol) => ({
             ...symbol,
             color: typeof symbol.color === "string" ? symbol.color : DEFAULT_ACTIVE_COLOR,
-            fontSize: typeof symbol.fontSize === "number" ? symbol.fontSize : DEFAULT_CANVAS_FONT_SIZE_REM,
+            fontSize: typeof symbol.fontSize === "number" ? symbol.fontSize : defaultFontSize,
             fontWeight: typeof (symbol as { fontWeight?: unknown }).fontWeight === "number" ? (symbol as { fontWeight: number }).fontWeight : 500,
             fontStyle: (symbol as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal",
             underline: (symbol as { underline?: unknown }).underline === true,
@@ -672,7 +753,7 @@ function parseStoredState(raw: string): WriterState | null {
         ? (parsed as { textBoxes: FloatingTextBox[] }).textBoxes.map((textBox) => ({
             ...textBox,
             color: typeof textBox.color === "string" ? textBox.color : DEFAULT_ACTIVE_COLOR,
-            fontSize: typeof textBox.fontSize === "number" ? textBox.fontSize : textBox.variant === "note" ? 0.92 : DEFAULT_CANVAS_FONT_SIZE_REM,
+            fontSize: typeof textBox.fontSize === "number" ? textBox.fontSize : textBox.variant === "note" ? defaultNoteFontSize : defaultFontSize,
             fontWeight: typeof (textBox as { fontWeight?: unknown }).fontWeight === "number" ? (textBox as { fontWeight: number }).fontWeight : 500,
             fontStyle: (textBox as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal",
             underline: (textBox as { underline?: unknown }).underline === true,
@@ -840,7 +921,7 @@ function isBlockEmpty(block: MathBlock) {
 }
 
 export function MathWorkbook() {
-  const [state, setState] = useState<WriterState>(DEFAULT_STATE);
+  const [state, setState] = useState<WriterState>(() => createDefaultState());
   const [historyPast, setHistoryPast] = useState<WriterState[]>([]);
   const [historyFuture, setHistoryFuture] = useState<WriterState[]>([]);
   const [openMenu, setOpenMenu] = useState<UtilityMenu>(null);
@@ -886,8 +967,8 @@ export function MathWorkbook() {
   const blockInputRefs = useRef<Record<string, Record<string, HTMLInputElement | null>>>({});
   const historyInitializedRef = useRef(false);
   const skipHistoryRef = useRef(false);
-  const previousStateRef = useRef<WriterState>(cloneWriterState(DEFAULT_STATE));
-  const stateRef = useRef<WriterState>(cloneWriterState(DEFAULT_STATE));
+  const previousStateRef = useRef<WriterState>(cloneWriterState(createDefaultState()));
+  const stateRef = useRef<WriterState>(cloneWriterState(createDefaultState()));
   const transientHistorySnapshotRef = useRef<WriterState | null>(null);
   const transientHistoryKindRef = useRef<"drag" | "edit" | null>(null);
   const suspendHistoryRef = useRef(false);
@@ -1179,7 +1260,8 @@ export function MathWorkbook() {
               ? textBoxNodeRefs.current[dragRef.current.itemId]
               : strokeNodeRefs.current[dragRef.current.itemId];
       const snappedAnchor = getCanvasPlacementPosition(nextAnchorX, nextAnchorY, bounds.width - 24, bounds.height - 24, "soft", {
-        height: draggedNode?.getBoundingClientRect().height ?? 0
+        height: draggedNode?.getBoundingClientRect().height ?? 0,
+        snapOffsetY: 5
       });
       setSnapGuides(snappedAnchor.guides);
       const deltaX = Math.round(snappedAnchor.x - dragRef.current.anchorX);
@@ -1330,6 +1412,7 @@ export function MathWorkbook() {
 
   function createBlock(type: StructuredTool) {
     const count = state.blocks.length;
+    const defaultFontSize = getDefaultCanvasFontSize(state.sheetStyle);
     const position = {
       x: 80 + (count % 3) * 48,
       y: 140 + count * 34,
@@ -1345,7 +1428,7 @@ export function MathWorkbook() {
         simplified: "",
         caption: "",
         color: state.activeColor,
-        fontSize: DEFAULT_CANVAS_FONT_SIZE_REM,
+        fontSize: defaultFontSize,
         fontWeight: 500,
         fontStyle: "normal",
         underline: false,
@@ -1366,7 +1449,7 @@ export function MathWorkbook() {
         remainder: "",
         caption: "",
         color: state.activeColor,
-        fontSize: DEFAULT_CANVAS_FONT_SIZE_REM,
+        fontSize: defaultFontSize,
         fontWeight: 500,
         fontStyle: "normal",
         underline: false,
@@ -1376,13 +1459,14 @@ export function MathWorkbook() {
     }
 
     if (type === "power") {
-      return { id: createId("power"), type, base: "", exponent: "", result: "", caption: "", color: state.activeColor, fontSize: DEFAULT_CANVAS_FONT_SIZE_REM, fontWeight: 500, fontStyle: "normal", underline: false, highlightColor: null, ...position } satisfies MathBlock;
+      return { id: createId("power"), type, base: "", exponent: "", result: "", caption: "", color: state.activeColor, fontSize: defaultFontSize, fontWeight: 500, fontStyle: "normal", underline: false, highlightColor: null, ...position } satisfies MathBlock;
     }
 
-    return { id: createId("root"), type, radicand: "", result: "", caption: "", color: state.activeColor, fontSize: DEFAULT_CANVAS_FONT_SIZE_REM, fontWeight: 500, fontStyle: "normal", underline: false, highlightColor: null, ...position } satisfies MathBlock;
+    return { id: createId("root"), type, radicand: "", result: "", caption: "", color: state.activeColor, fontSize: defaultFontSize, fontWeight: 500, fontStyle: "normal", underline: false, highlightColor: null, ...position } satisfies MathBlock;
   }
 
 function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number) {
+  const defaultFontSize = getDefaultCanvasFontSize(state.sheetStyle);
   return {
       id: createId("symbol"),
       type: "symbol",
@@ -1391,7 +1475,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       x,
       y,
       color: state.activeColor,
-      fontSize: DEFAULT_CANVAS_FONT_SIZE_REM
+      fontSize: defaultFontSize
       ,
       fontWeight: 500,
       fontStyle: "normal",
@@ -1401,13 +1485,15 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
 }
 
   function createFloatingTextBox(x: number, y: number, variant: "default" | "note" = "default") {
+    const defaultFontSize = getDefaultCanvasFontSize(state.sheetStyle);
+    const defaultNoteFontSize = getDefaultNoteFontSize(state.sheetStyle);
     return {
       id: createId("text"),
       type: "textBox",
       variant,
       text: "",
       color: state.activeColor,
-      fontSize: variant === "note" ? 0.92 : DEFAULT_CANVAS_FONT_SIZE_REM,
+      fontSize: variant === "note" ? defaultNoteFontSize : defaultFontSize,
       fontWeight: 500,
       fontStyle: "normal",
       underline: false,
@@ -1436,7 +1522,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     maxX: number,
     maxY: number,
     mode: "soft" | "strict" = "soft",
-    visualSize?: { height?: number }
+    visualSize?: { height?: number; snapOffsetY?: number }
   ) {
     const rem = getRemPixels();
     const metrics = getSheetMetrics(stateRef.current.sheetStyle, rem);
@@ -1445,10 +1531,11 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     const originX = metrics.originX;
     const originY = metrics.originY;
     const visualHeight = Math.max(0, visualSize?.height ?? 0);
+    const snapOffsetY = visualSize?.snapOffsetY ?? 0;
     const clampedX = Math.max(18, Math.min(maxX, Math.round(x)));
     const clampedY = Math.max(18, Math.min(maxY, Math.round(y)));
     const snappedX = originX + Math.round((clampedX - originX) / horizontalStep) * horizontalStep;
-    const anchorY = visualHeight > 0 ? clampedY + visualHeight + metrics.baselineOffset : clampedY + metrics.baselineOffset;
+    const anchorY = visualHeight > 0 ? clampedY + visualHeight + metrics.baselineOffset - snapOffsetY : clampedY + metrics.baselineOffset - snapOffsetY;
     const snappedY = originY + Math.round((anchorY - originY) / verticalStep) * verticalStep;
     const horizontalThreshold = Math.min(MAX_SNAP_THRESHOLD_PX, horizontalStep * 0.26);
     const verticalThreshold = Math.min(MAX_SNAP_THRESHOLD_PX, verticalStep * 0.22);
@@ -1456,7 +1543,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     const useSnapY = metrics.snapY && (mode === "strict" || Math.abs(anchorY - snappedY) <= verticalThreshold);
     const nextX = useSnapX ? snappedX : clampedX;
     const nextY = useSnapY
-      ? Math.max(18, Math.min(maxY, Math.round((visualHeight > 0 ? snappedY - visualHeight - metrics.baselineOffset : snappedY - metrics.baselineOffset))))
+      ? Math.max(18, Math.min(maxY, Math.round((visualHeight > 0 ? snappedY - visualHeight - metrics.baselineOffset + snapOffsetY : snappedY - metrics.baselineOffset + snapOffsetY))))
       : clampedY;
 
     return {
@@ -2990,7 +3077,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
 
   function resetDocument() {
     window.localStorage.removeItem(STORAGE_KEY);
-    setState(DEFAULT_STATE);
+    setState(createDefaultState());
     setOpenMenu(null);
     setCanvasQuickMenu(null);
     setModalState(null);
@@ -3001,17 +3088,120 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }
   }
 
-  async function exportPdf() {
+  function createExportSheetOverlay(sheetStyle: SheetStyle) {
+    const width = 794;
+    const height = 1123;
+    const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    overlay.setAttribute("class", "export-sheet-overlay");
+    overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    overlay.setAttribute("width", `${width}`);
+    overlay.setAttribute("height", `${height}`);
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.setAttribute("preserveAspectRatio", "none");
+
+    const addLine = (x1: number, y1: number, x2: number, y2: number, color: string) => {
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("class", "export-sheet-line");
+      line.setAttribute("x1", `${x1}`);
+      line.setAttribute("y1", `${y1}`);
+      line.setAttribute("x2", `${x2}`);
+      line.setAttribute("y2", `${y2}`);
+      line.setAttribute("stroke", color);
+      line.setAttribute("stroke-width", "1");
+      line.setAttribute("vector-effect", "non-scaling-stroke");
+      line.setAttribute("shape-rendering", "crispEdges");
+      overlay.append(line);
+    };
+
+    if (sheetStyle === "blank") {
+      return overlay;
+    }
+
+    if (sheetStyle === "seyes") {
+      const marginX = 151;
+      const major = 30.24;
+      const minor = 7.56;
+
+      addLine(150.5, 0, 150.5, height, "rgba(235, 146, 82, 0.45)");
+
+      for (let y = minor; y < height; y += minor) {
+        const isMajor = Math.abs((y / major) - Math.round(y / major)) < 0.02;
+        const snappedY = Math.round(y) + 0.5;
+        addLine(0, snappedY, width, snappedY, isMajor ? "rgba(162, 198, 228, 0.82)" : "rgba(190, 218, 239, 0.5)");
+      }
+
+      for (let x = marginX; x < width; x += major) {
+        const snappedX = Math.round(x) + 0.5;
+        addLine(snappedX, 0, snappedX, height, "rgba(162, 198, 228, 0.78)");
+      }
+
+      return overlay;
+    }
+
+    const major = sheetStyle === "large-grid" ? 30.24 : 15.12;
+    const color = sheetStyle === "large-grid" ? "rgba(187, 209, 235, 0.72)" : "rgba(187, 209, 235, 0.62)";
+
+    for (let y = major; y < 1123; y += major) {
+      const snappedY = Math.round(y) + 0.5;
+      addLine(0, snappedY, width, snappedY, color);
+    }
+
+    for (let x = major; x < 794; x += major) {
+      const snappedX = Math.round(x) + 0.5;
+      addLine(snappedX, 0, snappedX, height, color);
+    }
+
+    return overlay;
+  }
+
+  function createExportCanvasNode() {
     if (!canvasRef.current) {
+      return null;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "export-clone";
+
+    const clone = canvasRef.current.cloneNode(true) as HTMLElement;
+    clone.classList.remove("document-canvas-drop-active", "document-canvas-interacting", "document-canvas-draw-mode");
+    clone.classList.add("export-sheet");
+    clone.style.width = "794px";
+    clone.style.height = "1123px";
+    clone.style.aspectRatio = "auto";
+    clone.style.margin = "0";
+    clone.style.borderRadius = "0";
+    clone.style.boxShadow = "none";
+    clone.style.background = "#fffdf9";
+    clone.style.backgroundImage = "none";
+    clone.style.setProperty("--canvas-type-size", `${getDefaultCanvasFontSize(state.sheetStyle)}rem`);
+    clone.querySelectorAll(".canvas-snap-guide, .canvas-quick-menu, .canvas-quick-anchor").forEach((node) => node.remove());
+
+    const overlay = createExportSheetOverlay(state.sheetStyle);
+    clone.insertBefore(overlay, clone.firstChild);
+
+    wrapper.append(clone);
+    document.body.append(wrapper);
+
+    return {
+      node: clone,
+      cleanup: () => wrapper.remove()
+    };
+  }
+
+  async function exportPdf() {
+    const exportNode = createExportCanvasNode();
+
+    if (!exportNode) {
       return;
     }
 
     setIsExporting("pdf");
 
     try {
-      const imageUrl = await toPng(canvasRef.current, {
+      const imageUrl = await toPng(exportNode.node, {
         backgroundColor: "#fffdf8",
         cacheBust: true,
+        skipFonts: true,
         pixelRatio: 2
       });
 
@@ -3026,28 +3216,28 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const ratio = Math.min(pageWidth / image.width, pageHeight / image.height);
-      const renderWidth = image.width * ratio;
-      const renderHeight = image.height * ratio;
-
-      pdf.addImage(imageUrl, "PNG", (pageWidth - renderWidth) / 2, 20, renderWidth, renderHeight);
+      pdf.addImage(imageUrl, "PNG", 0, 0, pageWidth, pageHeight);
       pdf.save(`${safeFileName(state.title) || "maths-facile"}.pdf`);
     } finally {
+      exportNode.cleanup();
       setIsExporting(null);
     }
   }
 
   async function exportWord() {
-    if (!canvasRef.current) {
+    const exportNode = createExportCanvasNode();
+
+    if (!exportNode) {
       return;
     }
 
     setIsExporting("word");
 
     try {
-      const blob = await toBlob(canvasRef.current, {
+      const blob = await toBlob(exportNode.node, {
         backgroundColor: "#fffdf8",
         cacheBust: true,
+        skipFonts: true,
         pixelRatio: 2
       });
 
@@ -3091,8 +3281,8 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                     type: "png",
                     data: arrayBuffer,
                     transformation: {
-                      width: 520,
-                      height: Math.max(280, Math.round((image.height / image.width) * 520))
+                      width: 595,
+                      height: 842
                     }
                   })
                 ]
@@ -3105,6 +3295,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       const docBlob = await Packer.toBlob(documentFile);
       saveAs(docBlob, `${safeFileName(state.title) || "maths-facile"}.docx`);
     } finally {
+      exportNode.cleanup();
       setIsExporting(null);
     }
   }
@@ -3529,6 +3720,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
 
           <div
             className={`document-canvas document-canvas-${state.sheetStyle} ${isCanvasDropActive ? "document-canvas-drop-active" : ""} ${isCanvasInteracting ? "document-canvas-interacting" : ""} ${advancedTool === "draw" ? "document-canvas-draw-mode" : ""}`}
+            style={{ "--canvas-type-size": `${getDefaultCanvasFontSize(state.sheetStyle)}rem` } as ReactCSSProperties}
             ref={canvasRef}
             onDragOver={handleCanvasDragOver}
             onDragLeave={handleCanvasDragLeave}

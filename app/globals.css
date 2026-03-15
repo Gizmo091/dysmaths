@@ -1069,9 +1069,37 @@ input {
 .export-sheet {
   width: 794px;
   min-height: 1123px;
-  padding: 48px;
+  padding: 0;
+  margin: 0;
   background: #fffdf9;
   color: var(--ink);
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.export-sheet-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+}
+
+.export-sheet-line {
+  fill: none;
+}
+
+.export-sheet > :not(.export-sheet-overlay) {
+  position: relative;
+  z-index: 1;
+}
+
+.export-sheet::before,
+.export-sheet::after {
+  content: none !important;
+  display: none !important;
 }
 
 .export-head {
@@ -1402,6 +1430,9 @@ input {
   html,
   body {
     background: #ffffff;
+    width: 210mm;
+    height: 297mm;
+    overflow: hidden;
   }
 
   .top-toolbar {
@@ -1409,6 +1440,10 @@ input {
   }
 
   .editor-local-toolbar {
+    display: none !important;
+  }
+
+  .editor-sheet-head {
     display: none !important;
   }
 
@@ -1908,7 +1943,10 @@ input {
     width: 210mm;
     height: 297mm;
     aspect-ratio: auto;
+    margin: 0;
     border: none;
     box-shadow: none;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
