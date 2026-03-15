@@ -311,6 +311,17 @@ button {
   text-align: center;
 }
 
+.math-shortcut-glyph {
+  display: inline-block;
+  line-height: 1;
+}
+
+.math-shortcut-glyph-parallel {
+  font-family: "Cambria Math", "STIX Two Math", "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
 .toolbar-shortcut-active {
   background: var(--ink);
   color: #fffdf9;
@@ -1601,15 +1612,15 @@ input {
 }
 
 .floating-text-shortcut {
-  min-width: 1.8rem;
-  min-height: 1.8rem;
-  padding: 0.15rem 0.35rem;
+  min-width: 2.35rem;
+  min-height: 2.35rem;
+  padding: 0.22rem 0.46rem;
   border: 1px solid rgba(92, 108, 129, 0.12);
   border-radius: 9px;
   background: rgba(255, 253, 249, 0.98);
   color: var(--ink);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 1.02rem;
   font-weight: 700;
   line-height: 1;
 }

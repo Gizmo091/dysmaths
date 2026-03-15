@@ -331,6 +331,14 @@ function safeFileName(value: string) {
     .replace(/^-|-$/g, "");
 }
 
+function renderShortcutGlyph(shortcut: Pick<InlineShortcutItem, "id" | "label">) {
+  return (
+    <span className={`math-shortcut-glyph ${shortcut.id === "parallel" ? "math-shortcut-glyph-parallel" : ""}`}>
+      {shortcut.label}
+    </span>
+  );
+}
+
 function getTextBoxWidth(text: string) {
   const visibleText = text.trim();
   return Math.max(36, Math.min(920, visibleText.length * 14 + 12));
@@ -3224,7 +3232,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                     insertTextAtCursor(shortcut.content);
                   }}
                 >
-                  {shortcut.label}
+                  {renderShortcutGlyph(shortcut)}
                 </button>
               ))}
             </div>
@@ -3593,7 +3601,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => insertIntoEditingTextBox(textBox.id, shortcut.content)}
                         >
-                          {shortcut.label}
+                          {renderShortcutGlyph(shortcut)}
                         </button>
                       ))}
                     </div>
@@ -3827,7 +3835,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       title={shortcut.hint}
                       onClick={() => createShortcutSymbolAt(shortcut.id, canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
                     >
-                      {shortcut.label}
+                      {renderShortcutGlyph(shortcut)}
                     </button>
                   ))}
                 </div>
