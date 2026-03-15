@@ -576,6 +576,18 @@ input {
   font-size: 1em;
 }
 
+.math-preview-button {
+  display: inline-block;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+}
+
 .fraction-layout,
 .power-layout,
 .root-layout {
@@ -600,10 +612,7 @@ input {
   padding: 0.1rem 0.6rem;
 }
 
-.fraction-inline-input {
-  width: 80px;
-  min-width: 80px;
-  max-width: 80px;
+.math-inline-input {
   min-height: 0;
   padding: 0.02rem 0.18rem;
   border: none;
@@ -612,8 +621,19 @@ input {
   box-shadow: none;
   color: var(--ink);
   font: inherit;
-  font-size: 1em;
   text-align: center;
+}
+
+.math-inline-input-active {
+  outline: 1px dashed rgba(217, 119, 69, 0.44);
+  outline-offset: 2px;
+}
+
+.fraction-inline-input {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  font-size: 1em;
 }
 
 .fraction-bar {
@@ -641,6 +661,10 @@ input {
   column-gap: 0.55rem;
   grid-row-gap: 0.12rem;
   row-gap: 0.12rem;
+}
+
+.division-inline-input {
+  min-width: 2.8rem;
 }
 
 .division-quotient {
@@ -690,6 +714,21 @@ input {
   font-size: 1em;
 }
 
+.power-preview-editing {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+
+.power-inline-base {
+  width: 3rem;
+}
+
+.power-inline-exponent {
+  width: 2.4rem;
+  font-size: 0.84em;
+}
+
 .root-preview {
   display: flex;
   align-items: flex-start;
@@ -706,6 +745,15 @@ input {
   padding: 0.45rem 0.8rem 0 0.5rem;
   border-top: 3px solid var(--ink);
   font-size: 1em;
+}
+
+.root-preview-editing {
+  align-items: center;
+}
+
+.root-inline-radicand {
+  width: 4.4rem;
+  padding-top: 0.3rem;
 }
 
 .math-result {
@@ -1314,7 +1362,8 @@ input {
   color: var(--ink);
   font: inherit;
   line-height: 1.4;
-  padding: 0;
+  padding: 0 4px;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1324,6 +1373,8 @@ input {
   min-width: 0;
   color: var(--ink);
   line-height: 1.4;
+  padding: 0 4px;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

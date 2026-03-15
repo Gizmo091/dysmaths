@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  type ChangeEvent as ReactChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   useEffect,
@@ -153,10 +155,10 @@ type ToolbarDragMeta = {
   previewNode: HTMLElement | null;
 };
 
-type EditingFractionState =
+type EditingBlockState =
   | {
       blockId: string;
-      field: "numerator" | "denominator";
+      field: string;
     }
   | null;
 
@@ -358,7 +360,6 @@ function renderMathPreview(block: MathBlock) {
           <div className="fraction-bar" />
           <div className="fraction-line">{block.denominator || "dénominateur"}</div>
         </div>
-        {block.simplified ? <p className="math-result">Résultat : {block.simplified}</p> : null}
         {block.caption ? <p className="math-caption">{block.caption}</p> : null}
       </div>
     );
@@ -387,7 +388,6 @@ function renderMathPreview(block: MathBlock) {
           <span>{block.base || "base"}</span>
           <sup>{block.exponent || "exposant"}</sup>
         </p>
-        {block.result ? <p className="math-result">Résultat : {block.result}</p> : null}
         {block.caption ? <p className="math-caption">{block.caption}</p> : null}
       </div>
     );
@@ -399,10 +399,67 @@ function renderMathPreview(block: MathBlock) {
         <span className="root-symbol">√</span>
         <span className="root-radicand">{block.radicand || "radicande"}</span>
       </div>
-      {block.result ? <p className="math-result">Résultat : {block.result}</p> : null}
       {block.caption ? <p className="math-caption">{block.caption}</p> : null}
     </div>
   );
+}
+
+function getInlineStartField(type: StructuredTool) {
+  switch (type) {
+    case "fraction":
+      return "numerator";
+    case "division":
+      return "dividend";
+    case "power":
+      return "base";
+    case "root":
+      return "radicand";
+    default:
+      return "";
+  }
+}
+
+function getInlineFieldSequence(type: StructuredTool) {
+  switch (type) {
+    case "fraction":
+      return ["numerator", "denominator"];
+    case "division":
+      return ["dividend", "divisor", "quotient", "remainder"];
+    case "power":
+      return ["base", "exponent"];
+    case "root":
+      return ["radicand"];
+    default:
+      return [];
+  }
+}
+
+function getNextInlineField(block: MathBlock, field: string) {
+  const sequence = getInlineFieldSequence(block.type);
+  const index = sequence.indexOf(field);
+  return index >= 0 && index < sequence.length - 1 ? sequence[index + 1] : null;
+}
+
+function getPreviousInlineField(block: MathBlock, field: string) {
+  const sequence = getInlineFieldSequence(block.type);
+  const index = sequence.indexOf(field);
+  return index > 0 ? sequence[index - 1] : null;
+}
+
+function isBlockEmpty(block: MathBlock) {
+  if (block.type === "fraction") {
+    return !block.numerator.trim() && !block.denominator.trim();
+  }
+
+  if (block.type === "division") {
+    return !block.dividend.trim() && !block.divisor.trim() && !block.quotient.trim() && !block.remainder.trim();
+  }
+
+  if (block.type === "power") {
+    return !block.base.trim() && !block.exponent.trim();
+  }
+
+  return !block.radicand.trim();
 }
 
 export function MathWorkbook() {
@@ -415,7 +472,7 @@ export function MathWorkbook() {
   const [selectedSymbolIds, setSelectedSymbolIds] = useState<string[]>([]);
   const [selectedTextBoxIds, setSelectedTextBoxIds] = useState<string[]>([]);
   const [editingTextBoxId, setEditingTextBoxId] = useState<string | null>(null);
-  const [editingFraction, setEditingFraction] = useState<EditingFractionState>(null);
+  const [editingBlock, setEditingBlock] = useState<EditingBlockState>(null);
   const [canvasQuickMenu, setCanvasQuickMenu] = useState<CanvasQuickMenu>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuides>({ x: null, y: null });
   const [isHydrated, setIsHydrated] = useState(false);
@@ -440,7 +497,7 @@ export function MathWorkbook() {
   const symbolNodeRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const textBoxNodeRefs = useRef<Record<string, HTMLElement | null>>({});
   const pendingFocusTextBoxIdRef = useRef<string | null>(null);
-  const fractionInputRefs = useRef<Record<string, { numerator?: HTMLInputElement | null; denominator?: HTMLInputElement | null }>>({});
+  const blockInputRefs = useRef<Record<string, Record<string, HTMLInputElement | null>>>({});
   const historyInitializedRef = useRef(false);
   const skipHistoryRef = useRef(false);
   const previousStateRef = useRef<WriterState>(cloneWriterState(DEFAULT_STATE));
@@ -596,11 +653,11 @@ export function MathWorkbook() {
   }, [state.textBoxes]);
 
   useEffect(() => {
-    if (!editingFraction) {
+    if (!editingBlock) {
       return;
     }
 
-    const input = fractionInputRefs.current[editingFraction.blockId]?.[editingFraction.field];
+    const input = blockInputRefs.current[editingBlock.blockId]?.[editingBlock.field];
 
     if (!input) {
       return;
@@ -608,7 +665,7 @@ export function MathWorkbook() {
 
     input.focus();
     input.select();
-  }, [editingFraction]);
+  }, [editingBlock]);
 
   useEffect(() => {
     const element = editorRef.current;
@@ -1020,6 +1077,20 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     pendingFocusTextBoxIdRef.current = textBoxId;
   }
 
+  function beginBlockEditing(blockId: string, field?: string) {
+    const block = blocksRef.current.find((item) => item.id === blockId);
+
+    if (!block) {
+      return;
+    }
+
+    beginTransientHistorySession("edit");
+    selectSingleBlock(blockId);
+    setOpenMenu(null);
+    setCanvasQuickMenu(null);
+    setEditingBlock({ blockId, field: field ?? getInlineStartField(block.type) });
+  }
+
   function closeFloatingTextEditing() {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -1063,25 +1134,14 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     const canvas = canvasRef.current;
     const bounds = canvas?.getBoundingClientRect();
     const snappedPoint = getCanvasPlacementPosition(x, y, (bounds?.width ?? 320) - 24, (bounds?.height ?? 320) - 24, "soft");
+    const block = { ...createBlock(type), x: snappedPoint.x, y: snappedPoint.y };
+    beginTransientHistorySession("edit");
 
-    if (type === "fraction") {
-      const block = { ...createBlock("fraction"), x: snappedPoint.x, y: snappedPoint.y };
-      beginTransientHistorySession("edit");
-
-      setState((current) => ({
-        ...current,
-        blocks: [...current.blocks, block]
-      }));
-      selectSingleBlock(block.id);
-      setEditingFraction({ blockId: block.id, field: "numerator" });
-      setCanvasQuickMenu(null);
-      return;
-    }
-
-    setModalState({
-      mode: "insert",
-      block: { ...createBlock(type), x: snappedPoint.x, y: snappedPoint.y }
-    });
+    setState((current) => ({
+      ...current,
+      blocks: [...current.blocks, block]
+    }));
+    beginBlockEditing(block.id, getInlineStartField(type));
     setCanvasQuickMenu(null);
   }
 
@@ -1210,26 +1270,16 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
   }
 
   function openInsertModal(type: StructuredTool) {
-    if (type === "fraction") {
-      const block = createBlock("fraction");
-      beginTransientHistorySession("edit");
+    const block = createBlock(type);
+    beginTransientHistorySession("edit");
 
-      setState((current) => ({
-        ...current,
-        blocks: [...current.blocks, block]
-      }));
-      selectSingleBlock(block.id);
-      setEditingFraction({ blockId: block.id, field: "numerator" });
-      setOpenMenu(null);
-      return;
-    }
-
+    setState((current) => ({
+      ...current,
+      blocks: [...current.blocks, block]
+    }));
+    beginBlockEditing(block.id, getInlineStartField(type));
     setOpenMenu(null);
     setCanvasQuickMenu(null);
-    setModalState({
-      mode: "insert",
-      block: createBlock(type)
-    });
   }
 
   function openEditModal(blockId: string) {
@@ -1239,20 +1289,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       return;
     }
 
-    if (block.type === "fraction") {
-      setOpenMenu(null);
-      selectSingleBlock(blockId);
-      beginTransientHistorySession("edit");
-      setEditingFraction({ blockId, field: "numerator" });
-      return;
-    }
-
-    setOpenMenu(null);
-    setCanvasQuickMenu(null);
-    setModalState({
-      mode: "edit",
-      block: { ...block }
-    });
+    beginBlockEditing(blockId, getInlineStartField(block.type));
   }
 
   function updateModalField(key: string, value: string) {
@@ -1325,48 +1362,86 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }));
   }
 
-  function updateFractionField(blockId: string, key: "numerator" | "denominator", value: string) {
+  function updateInlineBlockField(blockId: string, key: string, value: string) {
     setState((current) => ({
       ...current,
       blocks: current.blocks.map((block) =>
-        block.id === blockId && block.type === "fraction" ? { ...block, [key]: value } : block
+        block.id === blockId ? ({ ...block, [key]: value } as MathBlock) : block
       )
     }));
   }
 
-  function finishFractionEditing(blockId: string) {
+  function finishBlockEditing(blockId: string) {
     const block = blocksRef.current.find((item) => item.id === blockId);
 
-    if (!block || block.type !== "fraction") {
-      setEditingFraction(null);
+    if (!block) {
+      setEditingBlock(null);
       scheduleTransientHistoryCommit("edit");
       return;
     }
 
-    if (!block.numerator.trim() && !block.denominator.trim()) {
+    if (isBlockEmpty(block)) {
       removeBlock(blockId);
-      setEditingFraction(null);
+      setEditingBlock(null);
       scheduleTransientHistoryCommit("edit");
       return;
     }
 
-    setEditingFraction(null);
+    setEditingBlock(null);
     scheduleTransientHistoryCommit("edit");
   }
 
-  function handleFractionKeyDown(blockId: string, field: "numerator" | "denominator", event: ReactKeyboardEvent<HTMLInputElement>) {
+  function shouldCloseEditingBlock(target: EventTarget | null) {
+    if (!editingBlock?.blockId) {
+      return false;
+    }
+
+    const blockNode = blockNodeRefs.current[editingBlock.blockId];
+
+    if (!blockNode) {
+      return true;
+    }
+
+    return !blockNode.contains(target as Node | null);
+  }
+
+  function handleInlineBlockKeyDown(blockId: string, field: string, event: ReactKeyboardEvent<HTMLInputElement>) {
+    const block = blocksRef.current.find((item) => item.id === blockId);
+
+    if (!block) {
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+      }
+      finishBlockEditing(blockId);
+      return;
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const targetField = event.shiftKey ? getPreviousInlineField(block, field) : getNextInlineField(block, field);
+
+      if (targetField) {
+        setEditingBlock({ blockId, field: targetField });
+        return;
+      }
+
+      finishBlockEditing(blockId);
+      return;
+    }
+
     if (event.key !== "Enter") {
       return;
     }
 
     event.preventDefault();
+    const nextField = getNextInlineField(block, field);
 
-    if (field === "numerator") {
-      setEditingFraction({ blockId, field: "denominator" });
+    if (nextField) {
+      setEditingBlock({ blockId, field: nextField });
       return;
     }
 
-    finishFractionEditing(blockId);
+    finishBlockEditing(blockId);
   }
 
   function removeTextBox(textBoxId: string) {
@@ -1395,7 +1470,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     setOpenMenu(null);
     setModalState(null);
     setCanvasQuickMenu(null);
-    setEditingFraction(null);
+    setEditingBlock(null);
     setEditingTextBoxId(null);
     clearFloatingSelection();
   }
@@ -1796,22 +1871,13 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     handleToolDragEnd();
 
     if (payload.kind === "structured") {
-      if (payload.toolId === "fraction") {
-        const block = { ...createBlock("fraction"), x: position.x, y: position.y };
-
-        setState((current) => ({
-          ...current,
-          blocks: [...current.blocks, block]
-        }));
-        selectSingleBlock(block.id);
-        setEditingFraction({ blockId: block.id, field: "numerator" });
-        return;
-      }
-
-      setModalState({
-        mode: "insert",
-        block: { ...createBlock(payload.toolId), x: position.x, y: position.y }
-      });
+      const block = { ...createBlock(payload.toolId), x: position.x, y: position.y };
+      beginTransientHistorySession("edit");
+      setState((current) => ({
+        ...current,
+        blocks: [...current.blocks, block]
+      }));
+      beginBlockEditing(block.id, getInlineStartField(payload.toolId));
       return;
     }
 
@@ -1828,6 +1894,179 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       symbols: [...current.symbols, symbol]
     }));
     selectSingleSymbol(symbol.id);
+  }
+
+  function renderBlockPreviewButton(blockId: string, field: string, content: string, className: string) {
+    return (
+      <button
+        type="button"
+        className={`math-preview-button ${className}`}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          beginBlockEditing(blockId, field);
+        }}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  function renderInteractiveMathPreview(block: MathBlock) {
+    if (block.type === "fraction") {
+      return (
+        <div className="math-layout fraction-layout">
+          <div className="fraction-preview">
+            {renderBlockPreviewButton(block.id, "numerator", block.numerator || "numérateur", "fraction-line top")}
+            <div className="fraction-bar" />
+            {renderBlockPreviewButton(block.id, "denominator", block.denominator || "dénominateur", "fraction-line")}
+          </div>
+          {block.caption ? <p className="math-caption">{block.caption}</p> : null}
+        </div>
+      );
+    }
+
+    if (block.type === "division") {
+      return (
+        <div className="math-layout division-layout">
+          <div className="division-preview">
+            {renderBlockPreviewButton(block.id, "quotient", block.quotient || "quotient", "division-quotient")}
+            {renderBlockPreviewButton(block.id, "divisor", block.divisor || "diviseur", "division-divisor")}
+            <div className="division-bracket">
+              {renderBlockPreviewButton(block.id, "dividend", block.dividend || "dividende", "division-dividend")}
+              {renderBlockPreviewButton(block.id, "remainder", block.remainder || "reste", "division-remainder")}
+            </div>
+          </div>
+          {block.caption ? <p className="math-caption">{block.caption}</p> : null}
+        </div>
+      );
+    }
+
+    if (block.type === "power") {
+      return (
+        <div className="math-layout power-layout">
+          <p className="power-preview">
+            {renderBlockPreviewButton(block.id, "base", block.base || "base", "power-preview-main")}
+            <sup>{renderBlockPreviewButton(block.id, "exponent", block.exponent || "exposant", "power-preview-exponent")}</sup>
+          </p>
+          {block.caption ? <p className="math-caption">{block.caption}</p> : null}
+        </div>
+      );
+    }
+
+    return (
+      <div className="math-layout root-layout">
+        <div className="root-preview">
+          <span className="root-symbol">√</span>
+          {renderBlockPreviewButton(block.id, "radicand", block.radicand || "radicande", "root-radicand")}
+        </div>
+        {block.caption ? <p className="math-caption">{block.caption}</p> : null}
+      </div>
+    );
+  }
+
+  function renderInlineBlockEditor(block: MathBlock) {
+    const currentField = editingBlock?.blockId === block.id ? editingBlock.field : null;
+    const bindInlineInput = (field: string) => ({
+      ref: (node: HTMLInputElement | null) => {
+        blockInputRefs.current[block.id] = {
+          ...blockInputRefs.current[block.id],
+          [field]: node
+        };
+      },
+      className: "math-inline-input",
+      onMouseDown: (event: ReactMouseEvent<HTMLInputElement>) => event.stopPropagation(),
+      onFocus: () => setEditingBlock({ blockId: block.id, field }),
+      onChange: (event: ReactChangeEvent<HTMLInputElement>) => updateInlineBlockField(block.id, field, event.target.value),
+      onKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => handleInlineBlockKeyDown(block.id, field, event),
+      onBlur: (event: ReactFocusEvent<HTMLInputElement>) => {
+        const nextTarget = event.relatedTarget as Node | null;
+
+        if (nextTarget && blockNodeRefs.current[block.id]?.contains(nextTarget)) {
+          return;
+        }
+
+        if (editingBlock?.field === field) {
+          setTimeout(() => {
+            if (editingBlock?.field === field) {
+              finishBlockEditing(block.id);
+            }
+          }, 0);
+        }
+      }
+    });
+
+    if (block.type === "fraction") {
+      return (
+        <div className="math-layout fraction-layout">
+          <div className="fraction-preview fraction-preview-editing">
+            <input {...bindInlineInput("numerator")} value={block.numerator} placeholder="a" className="math-inline-input fraction-inline-input" />
+            <div className="fraction-bar" />
+            <input {...bindInlineInput("denominator")} value={block.denominator} placeholder="b" className="math-inline-input fraction-inline-input" />
+          </div>
+        </div>
+      );
+    }
+
+    if (block.type === "division") {
+      return (
+        <div className="math-layout division-layout">
+          <div className="division-preview">
+            <input
+              {...bindInlineInput("quotient")}
+              value={block.quotient}
+              placeholder="q"
+              className={`math-inline-input division-inline-input division-quotient ${currentField === "quotient" ? "math-inline-input-active" : ""}`}
+            />
+            <input
+              {...bindInlineInput("divisor")}
+              value={block.divisor}
+              placeholder="d"
+              className={`math-inline-input division-inline-input division-divisor ${currentField === "divisor" ? "math-inline-input-active" : ""}`}
+            />
+            <div className="division-bracket">
+              <input
+                {...bindInlineInput("dividend")}
+                value={block.dividend}
+                placeholder="a"
+                className={`math-inline-input division-inline-input division-dividend ${currentField === "dividend" ? "math-inline-input-active" : ""}`}
+              />
+              <input
+                {...bindInlineInput("remainder")}
+                value={block.remainder}
+                placeholder="r"
+                className={`math-inline-input division-inline-input division-remainder ${currentField === "remainder" ? "math-inline-input-active" : ""}`}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (block.type === "power") {
+      return (
+        <div className="math-layout power-layout">
+          <p className="power-preview power-preview-editing">
+            <input {...bindInlineInput("base")} value={block.base} placeholder="a" className="math-inline-input power-inline-base" />
+            <sup>
+              <input {...bindInlineInput("exponent")} value={block.exponent} placeholder="n" className="math-inline-input power-inline-exponent" />
+            </sup>
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="math-layout root-layout">
+        <div className="root-preview root-preview-editing">
+          <span className="root-symbol">√</span>
+          <input {...bindInlineInput("radicand")} value={block.radicand} placeholder="a" className="math-inline-input root-inline-radicand" />
+        </div>
+      </div>
+    );
   }
 
   function resetDocument() {
@@ -1964,10 +2203,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             <input value={block.denominator} onChange={(event) => updateModalField("denominator", event.target.value)} placeholder="5" />
           </label>
           <label>
-            <span>Résultat simplifié</span>
-            <input value={block.simplified} onChange={(event) => updateModalField("simplified", event.target.value)} placeholder="7/5" />
-          </label>
-          <label>
             <span>Consigne ou remarque</span>
             <input value={block.caption} onChange={(event) => updateModalField("caption", event.target.value)} placeholder="Je simplifie la fraction" />
           </label>
@@ -2014,10 +2249,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             <input value={block.exponent} onChange={(event) => updateModalField("exponent", event.target.value)} placeholder="3" />
           </label>
           <label>
-            <span>Résultat</span>
-            <input value={block.result} onChange={(event) => updateModalField("result", event.target.value)} placeholder="8" />
-          </label>
-          <label>
             <span>Consigne ou remarque</span>
             <input value={block.caption} onChange={(event) => updateModalField("caption", event.target.value)} placeholder="Carré, cube, puissance n" />
           </label>
@@ -2030,10 +2261,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
         <label>
           <span>Radicande</span>
           <input value={block.radicand} onChange={(event) => updateModalField("radicand", event.target.value)} placeholder="49" />
-        </label>
-        <label>
-          <span>Résultat</span>
-          <input value={block.result} onChange={(event) => updateModalField("result", event.target.value)} placeholder="7" />
         </label>
         <label className="wide-field">
           <span>Consigne ou remarque</span>
@@ -2318,6 +2545,13 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             onDrop={handleCanvasDrop}
             onMouseDown={(event) => {
               setCanvasQuickMenu(null);
+              const activeEditingBlockId = editingBlock?.blockId;
+
+              if (activeEditingBlockId && shouldCloseEditingBlock(event.target)) {
+                event.preventDefault();
+                finishBlockEditing(activeEditingBlockId);
+                return;
+              }
 
               if (event.target === event.currentTarget) {
                 if (selectedTextBoxId) {
@@ -2342,6 +2576,13 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
               suppressContentEditableWarning
               onMouseDown={(event) => {
                 setCanvasQuickMenu(null);
+                const activeEditingBlockId = editingBlock?.blockId;
+
+                if (activeEditingBlockId && shouldCloseEditingBlock(event.target)) {
+                  event.preventDefault();
+                  finishBlockEditing(activeEditingBlockId);
+                  return;
+                }
 
                 if (event.target === event.currentTarget) {
                   if (selectedTextBoxId) {
@@ -2382,60 +2623,10 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   openEditModal(block.id);
                 }}
               >
-                {block.type === "fraction" && editingFraction?.blockId === block.id ? (
-                  <div className="math-layout fraction-layout">
-                    <div className="fraction-preview fraction-preview-editing">
-                      <input
-                        ref={(node) => {
-                          fractionInputRefs.current[block.id] = {
-                            ...fractionInputRefs.current[block.id],
-                            numerator: node
-                          };
-                        }}
-                        className="fraction-inline-input"
-                        value={block.numerator}
-                        placeholder="a"
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onChange={(event) => updateFractionField(block.id, "numerator", event.target.value)}
-                        onKeyDown={(event) => handleFractionKeyDown(block.id, "numerator", event)}
-                        onBlur={() => {
-                          if (editingFraction?.field === "numerator") {
-                            setTimeout(() => {
-                              if (editingFraction?.field === "numerator") {
-                                finishFractionEditing(block.id);
-                              }
-                            }, 0);
-                          }
-                        }}
-                      />
-                      <div className="fraction-bar" />
-                      <input
-                        ref={(node) => {
-                          fractionInputRefs.current[block.id] = {
-                            ...fractionInputRefs.current[block.id],
-                            denominator: node
-                          };
-                        }}
-                        className="fraction-inline-input"
-                        value={block.denominator}
-                        placeholder="b"
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onChange={(event) => updateFractionField(block.id, "denominator", event.target.value)}
-                        onKeyDown={(event) => handleFractionKeyDown(block.id, "denominator", event)}
-                        onBlur={() => {
-                          if (editingFraction?.field === "denominator") {
-                            setTimeout(() => {
-                              if (editingFraction?.field === "denominator") {
-                                finishFractionEditing(block.id);
-                              }
-                            }, 0);
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
+                {editingBlock?.blockId === block.id ? (
+                  renderInlineBlockEditor(block)
                 ) : (
-                  renderMathPreview(block)
+                  renderInteractiveMathPreview(block)
                 )}
               </article>
             ))}
