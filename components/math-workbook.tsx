@@ -243,10 +243,7 @@ const CANVAS_GRID_TOP_REM = 1.25;
 const MAX_SNAP_THRESHOLD_PX = 10;
 const DEFAULT_ACTIVE_COLOR = "#1f2d3d";
 
-const DEFAULT_TEXT_HTML = [
-  "<p><strong>Commence ici :</strong> écris librement ta méthode, tes calculs et ta réponse.</p>",
-  "<p>Ajoute ensuite une fraction posée, une division posée, une puissance ou une racine, puis déplace le bloc où tu veux sur la feuille.</p>"
-].join("");
+const DEFAULT_TEXT_HTML = "";
 
 const DEFAULT_STATE: WriterState = {
   title: "Mon document de maths",
@@ -880,6 +877,25 @@ export function MathWorkbook() {
       y: Math.max(18, minTop - 52)
     };
   }, [isCanvasInteracting, selectedBlockIds, selectedCount, selectedStrokeIds, selectedSymbolIds, selectedTextBoxIds, selectionRect, state.blocks, state.strokes, state.symbols, state.textBoxes]);
+  const selectedTextBoxMenuPosition = useMemo(() => {
+    if (!selectedTextBox || editingTextBoxId === selectedTextBox.id || selectedCount !== 1 || isCanvasInteracting || selectionRect || !canvasRef.current) {
+      return null;
+    }
+
+    const node = textBoxNodeRefs.current[selectedTextBox.id];
+
+    if (!node) {
+      return null;
+    }
+
+    const canvasBounds = canvasRef.current.getBoundingClientRect();
+    const rect = node.getBoundingClientRect();
+
+    return {
+      x: rect.left - canvasBounds.left + rect.width / 2 + 100,
+      y: Math.max(18, rect.top - canvasBounds.top - 52)
+    };
+  }, [editingTextBoxId, isCanvasInteracting, selectedCount, selectedTextBox, selectionRect]);
 
   useEffect(() => {
     setIsHydrated(true);
@@ -3645,6 +3661,51 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                 >
                   ×
                 </button>
+              </div>
+            ) : null}
+
+            {selectedTextBoxMenuPosition ? (
+              <div
+                className="canvas-quick-menu canvas-text-format-menu"
+                style={{ left: `${selectedTextBoxMenuPosition.x}px`, top: `${selectedTextBoxMenuPosition.y}px` }}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="canvas-quick-close"
+                  aria-label="Fermer le menu"
+                  title="Fermer"
+                  onClick={clearFloatingSelection}
+                >
+                  ×
+                </button>
+                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label="Gras" title="Gras" onClick={toggleCanvasBold}>
+                  B
+                </button>
+                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label="Italique" title="Italique" onClick={toggleCanvasItalic}>
+                  I
+                </button>
+                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label="Souligné" title="Souligné" onClick={toggleCanvasUnderline}>
+                  <span style={{ textDecoration: "underline" }}>U</span>
+                </button>
+                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label="Réduire" title="Réduire" onClick={() => adjustCanvasSize("down")}>
+                  A-
+                </button>
+                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label="Agrandir" title="Agrandir" onClick={() => adjustCanvasSize("up")}>
+                  A+
+                </button>
+                {HIGHLIGHT_OPTIONS.filter((option) => option.value).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`canvas-quick-action canvas-text-highlight-chip ${(option.value || null) === selectedHighlightColor ? "canvas-text-highlight-chip-active" : ""}`}
+                    aria-label={`Surlignage ${option.label}`}
+                    title={`Surlignage ${option.label}`}
+                    onClick={() => applyCanvasHighlight((option.value || null) === selectedHighlightColor ? "" : option.value)}
+                  >
+                    <span className="canvas-text-highlight-sample" style={{ backgroundColor: option.value }} />
+                  </button>
+                ))}
               </div>
             ) : null}
 
