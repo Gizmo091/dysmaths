@@ -1325,7 +1325,7 @@ input {
 .canvas-draw-path {
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.6;
+  stroke-width: var(--stroke-width, 2.6px);
   stroke-linecap: round;
   stroke-linejoin: round;
   pointer-events: none;
@@ -1382,7 +1382,7 @@ input {
   box-shadow: none;
   font-size: var(--canvas-type-size);
   line-height: 1.1;
-  font-weight: 700;
+  font-weight: inherit;
   -webkit-user-select: none;
      -moz-user-select: none;
           user-select: none;

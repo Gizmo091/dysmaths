@@ -3,6 +3,7 @@
 import {
   type ChangeEvent as ReactChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
+  type CSSProperties as ReactCSSProperties,
   type DragEvent as ReactDragEvent,
   type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -29,6 +30,9 @@ type FractionBlock = {
   simplified: string;
   caption: string;
   color: string;
+  fontSize: number;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
   numeratorStrike?: boolean;
   denominatorStrike?: boolean;
   x: number;
@@ -45,6 +49,9 @@ type DivisionBlock = {
   remainder: string;
   caption: string;
   color: string;
+  fontSize: number;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
   x: number;
   y: number;
   width: number;
@@ -58,6 +65,9 @@ type PowerBlock = {
   result: string;
   caption: string;
   color: string;
+  fontSize: number;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
   x: number;
   y: number;
   width: number;
@@ -70,6 +80,9 @@ type RootBlock = {
   result: string;
   caption: string;
   color: string;
+  fontSize: number;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
   x: number;
   y: number;
   width: number;
@@ -84,6 +97,8 @@ type FloatingSymbol = {
   y: number;
   color: string;
   fontSize: number;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
 };
 
 type FloatingTextBox = {
@@ -92,6 +107,9 @@ type FloatingTextBox = {
   variant?: "default" | "note";
   text: string;
   color: string;
+  fontSize: number;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
   x: number;
   y: number;
   width: number;
@@ -105,6 +123,7 @@ type FreehandPoint = {
 type FreehandStroke = {
   id: string;
   color: string;
+  width: number;
   points: FreehandPoint[];
 };
 
@@ -226,13 +245,6 @@ const DEFAULT_STATE: WriterState = {
   textBoxes: [],
   strokes: []
 };
-
-const FONT_SIZE_OPTIONS = [
-  { id: "size-small", label: "Petit", value: "2" },
-  { id: "size-normal", label: "Normal", value: "3" },
-  { id: "size-large", label: "Grand", value: "5" },
-  { id: "size-xlarge", label: "Très grand", value: "7" }
-] as const;
 
 const COLOR_OPTIONS = [
   { id: "ink", label: "Encre", value: "#1f2d3d" },
@@ -525,18 +537,27 @@ function parseStoredState(raw: string): WriterState | null {
       activeColor: typeof (parsed as { activeColor?: unknown }).activeColor === "string" ? parsed.activeColor : DEFAULT_ACTIVE_COLOR,
       blocks: parsed.blocks.map((block) => ({
         ...block,
-        color: typeof (block as { color?: unknown }).color === "string" ? (block as { color: string }).color : DEFAULT_ACTIVE_COLOR
+        color: typeof (block as { color?: unknown }).color === "string" ? (block as { color: string }).color : DEFAULT_ACTIVE_COLOR,
+        fontSize: typeof (block as { fontSize?: unknown }).fontSize === "number" ? (block as { fontSize: number }).fontSize : DEFAULT_CANVAS_FONT_SIZE_REM,
+        fontWeight: typeof (block as { fontWeight?: unknown }).fontWeight === "number" ? (block as { fontWeight: number }).fontWeight : 500,
+        fontStyle: (block as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal"
       })),
       symbols: Array.isArray(parsed.symbols)
         ? parsed.symbols.map((symbol) => ({
             ...symbol,
-            color: typeof symbol.color === "string" ? symbol.color : DEFAULT_ACTIVE_COLOR
+            color: typeof symbol.color === "string" ? symbol.color : DEFAULT_ACTIVE_COLOR,
+            fontSize: typeof symbol.fontSize === "number" ? symbol.fontSize : DEFAULT_CANVAS_FONT_SIZE_REM,
+            fontWeight: typeof (symbol as { fontWeight?: unknown }).fontWeight === "number" ? (symbol as { fontWeight: number }).fontWeight : 500,
+            fontStyle: (symbol as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal"
           }))
         : [],
       textBoxes: Array.isArray((parsed as { textBoxes?: unknown }).textBoxes)
         ? (parsed as { textBoxes: FloatingTextBox[] }).textBoxes.map((textBox) => ({
             ...textBox,
-            color: typeof textBox.color === "string" ? textBox.color : DEFAULT_ACTIVE_COLOR
+            color: typeof textBox.color === "string" ? textBox.color : DEFAULT_ACTIVE_COLOR,
+            fontSize: typeof textBox.fontSize === "number" ? textBox.fontSize : textBox.variant === "note" ? 0.92 : DEFAULT_CANVAS_FONT_SIZE_REM,
+            fontWeight: typeof (textBox as { fontWeight?: unknown }).fontWeight === "number" ? (textBox as { fontWeight: number }).fontWeight : 500,
+            fontStyle: (textBox as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal"
           }))
         : [],
       strokes: Array.isArray((parsed as { strokes?: unknown }).strokes)
@@ -544,12 +565,12 @@ function parseStoredState(raw: string): WriterState | null {
             (stroke) =>
               Boolean(stroke) &&
               typeof stroke.id === "string" &&
-              typeof stroke.color !== "number" &&
               Array.isArray(stroke.points) &&
               stroke.points.every((point) => point && typeof point.x === "number" && typeof point.y === "number")
           ).map((stroke) => ({
             ...stroke,
-            color: typeof stroke.color === "string" ? stroke.color : DEFAULT_ACTIVE_COLOR
+            color: typeof stroke.color === "string" ? stroke.color : DEFAULT_ACTIVE_COLOR,
+            width: typeof stroke.width === "number" ? stroke.width : 2.6
           }))
         : []
     };
@@ -1074,7 +1095,7 @@ export function MathWorkbook() {
 
           setState((current) => ({
             ...current,
-            strokes: [...current.strokes, { id: createId("stroke"), color: current.activeColor, points: normalizedPoints }]
+            strokes: [...current.strokes, { id: createId("stroke"), color: current.activeColor, width: 2.6, points: normalizedPoints }]
           }));
           scheduleTransientHistoryCommit("edit");
         } else {
@@ -1161,6 +1182,9 @@ export function MathWorkbook() {
         simplified: "",
         caption: "",
         color: state.activeColor,
+        fontSize: DEFAULT_CANVAS_FONT_SIZE_REM,
+        fontWeight: 500,
+        fontStyle: "normal",
         numeratorStrike: false,
         denominatorStrike: false,
         ...position
@@ -1177,15 +1201,18 @@ export function MathWorkbook() {
         remainder: "",
         caption: "",
         color: state.activeColor,
+        fontSize: DEFAULT_CANVAS_FONT_SIZE_REM,
+        fontWeight: 500,
+        fontStyle: "normal",
         ...position
       } satisfies MathBlock;
     }
 
     if (type === "power") {
-      return { id: createId("power"), type, base: "", exponent: "", result: "", caption: "", color: state.activeColor, ...position } satisfies MathBlock;
+      return { id: createId("power"), type, base: "", exponent: "", result: "", caption: "", color: state.activeColor, fontSize: DEFAULT_CANVAS_FONT_SIZE_REM, fontWeight: 500, fontStyle: "normal", ...position } satisfies MathBlock;
     }
 
-    return { id: createId("root"), type, radicand: "", result: "", caption: "", color: state.activeColor, ...position } satisfies MathBlock;
+    return { id: createId("root"), type, radicand: "", result: "", caption: "", color: state.activeColor, fontSize: DEFAULT_CANVAS_FONT_SIZE_REM, fontWeight: 500, fontStyle: "normal", ...position } satisfies MathBlock;
   }
 
 function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number) {
@@ -1198,6 +1225,9 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       y,
       color: state.activeColor,
       fontSize: DEFAULT_CANVAS_FONT_SIZE_REM
+      ,
+      fontWeight: 500,
+      fontStyle: "normal"
   } satisfies FloatingSymbol;
 }
 
@@ -1208,6 +1238,9 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       variant,
       text: "",
       color: state.activeColor,
+      fontSize: variant === "note" ? 0.92 : DEFAULT_CANVAS_FONT_SIZE_REM,
+      fontWeight: 500,
+      fontStyle: "normal",
       x,
       y: Math.max(18, y - FLOATING_TEXTBOX_Y_OFFSET),
       width: variant === "note" ? 72 : 100
@@ -1729,15 +1762,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     setSelectedSymbolIds((current) => current.filter((id) => id !== symbolId));
   }
 
-  function updateSymbolStyle(symbolId: string, updates: Partial<Pick<FloatingSymbol, "fontSize" | "color">>) {
-    setState((current) => ({
-      ...current,
-      symbols: current.symbols.map((symbol) =>
-        symbol.id === symbolId ? { ...symbol, ...updates } : symbol
-      )
-    }));
-  }
-
   function updateTextBox(textBoxId: string, updates: Partial<Pick<FloatingTextBox, "text" | "width" | "color">>) {
     setState((current) => ({
       ...current,
@@ -1768,6 +1792,109 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     if (editorRef.current && editorRef.current.contains(document.activeElement)) {
       runCommand("foreColor", color);
     }
+  }
+
+  function toggleCanvasBold() {
+    if (selectedCount === 0) {
+      runCommand("bold");
+      return;
+    }
+
+    setState((current) => {
+      const selectedBlocks = current.blocks.filter((block) => selectedBlockIdsRef.current.includes(block.id));
+      const selectedSymbols = current.symbols.filter((symbol) => selectedSymbolIdsRef.current.includes(symbol.id));
+      const selectedTextBoxes = current.textBoxes.filter((textBox) => selectedTextBoxIdsRef.current.includes(textBox.id));
+      const selectedStrokes = current.strokes.filter((stroke) => selectedStrokeIdsRef.current.includes(stroke.id));
+      const shouldEmphasizeText = ![...selectedBlocks, ...selectedSymbols, ...selectedTextBoxes].every((item) => item.fontWeight >= 700);
+      const shouldEmphasizeStrokes = !selectedStrokes.every((stroke) => stroke.width >= 4);
+
+      return {
+        ...current,
+        blocks: current.blocks.map((block) =>
+          selectedBlockIdsRef.current.includes(block.id) ? { ...block, fontWeight: shouldEmphasizeText ? 700 : 500 } : block
+        ),
+        symbols: current.symbols.map((symbol) =>
+          selectedSymbolIdsRef.current.includes(symbol.id) ? { ...symbol, fontWeight: shouldEmphasizeText ? 700 : 500 } : symbol
+        ),
+        textBoxes: current.textBoxes.map((textBox) =>
+          selectedTextBoxIdsRef.current.includes(textBox.id) ? { ...textBox, fontWeight: shouldEmphasizeText ? 700 : 500 } : textBox
+        ),
+        strokes: current.strokes.map((stroke) =>
+          selectedStrokeIdsRef.current.includes(stroke.id) ? { ...stroke, width: shouldEmphasizeStrokes ? 4.2 : 2.6 } : stroke
+        )
+      };
+    });
+  }
+
+  function toggleCanvasItalic() {
+    if (selectedCount === 0) {
+      runCommand("italic");
+      return;
+    }
+
+    setState((current) => {
+      const selectedTextItems = [
+        ...current.blocks.filter((block) => selectedBlockIdsRef.current.includes(block.id)),
+        ...current.symbols.filter((symbol) => selectedSymbolIdsRef.current.includes(symbol.id)),
+        ...current.textBoxes.filter((textBox) => selectedTextBoxIdsRef.current.includes(textBox.id))
+      ];
+      const shouldItalicize = !selectedTextItems.every((item) => item.fontStyle === "italic");
+
+      return {
+        ...current,
+        blocks: current.blocks.map((block) =>
+          selectedBlockIdsRef.current.includes(block.id) ? { ...block, fontStyle: shouldItalicize ? "italic" : "normal" } : block
+        ),
+        symbols: current.symbols.map((symbol) =>
+          selectedSymbolIdsRef.current.includes(symbol.id) ? { ...symbol, fontStyle: shouldItalicize ? "italic" : "normal" } : symbol
+        ),
+        textBoxes: current.textBoxes.map((textBox) =>
+          selectedTextBoxIdsRef.current.includes(textBox.id) ? { ...textBox, fontStyle: shouldItalicize ? "italic" : "normal" } : textBox
+        )
+      };
+    });
+  }
+
+  function adjustCanvasSize(direction: "down" | "up") {
+    if (selectedCount === 0) {
+      runCommand("fontSize", direction === "up" ? "5" : "2");
+      return;
+    }
+
+    const delta = direction === "up" ? 0.12 : -0.12;
+
+    setState((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) =>
+        selectedBlockIdsRef.current.includes(block.id)
+          ? { ...block, fontSize: Math.max(0.9, Math.min(2.6, Number((block.fontSize + delta).toFixed(2)))) }
+          : block
+      ),
+      symbols: current.symbols.map((symbol) =>
+        selectedSymbolIdsRef.current.includes(symbol.id)
+          ? { ...symbol, fontSize: Math.max(0.9, Math.min(2.6, Number((symbol.fontSize + delta).toFixed(2)))) }
+          : symbol
+      ),
+      textBoxes: current.textBoxes.map((textBox) =>
+        selectedTextBoxIdsRef.current.includes(textBox.id)
+          ? (() => {
+              const nextFontSize = Math.max(textBox.variant === "note" ? 0.72 : 0.9, Math.min(2.6, Number((textBox.fontSize + delta).toFixed(2))));
+              const minimumWidth = textBox.variant === "note" ? 56 : 36;
+              const sizeRatio = nextFontSize / DEFAULT_CANVAS_FONT_SIZE_REM;
+              return {
+                ...textBox,
+                fontSize: nextFontSize,
+                width: Math.max(minimumWidth, Math.round(getTextBoxWidth(textBox.text || " ") * sizeRatio))
+              };
+            })()
+          : textBox
+      ),
+      strokes: current.strokes.map((stroke) =>
+        selectedStrokeIdsRef.current.includes(stroke.id)
+          ? { ...stroke, width: Math.max(1.6, Math.min(6, Number((stroke.width + delta * 6).toFixed(2)))) }
+          : stroke
+      )
+    }));
   }
 
   function updateInlineBlockField(blockId: string, key: string, value: string) {
@@ -2938,20 +3065,18 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
 
           <div className="editor-local-toolbar" aria-label="Mise en forme du texte">
             <div className="editor-local-toolbar-group">
-              <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand("bold")}>
-                Gras
+              <button type="button" className="chip-button chip-button-compact" aria-label="Gras" title="Gras" onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasBold}>
+                B
               </button>
-              <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand("removeFormat")}>
-                Effacer
+              <button type="button" className="chip-button chip-button-compact" aria-label="Italique" title="Italique" onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasItalic}>
+                I
               </button>
-            </div>
-
-            <div className="editor-local-toolbar-group">
-              {FONT_SIZE_OPTIONS.map((option) => (
-                <button key={option.id} type="button" className="chip-button chip-button-compact" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand("fontSize", option.value)}>
-                  {option.label}
-                </button>
-              ))}
+              <button type="button" className="chip-button chip-button-compact" aria-label="Réduire" title="Réduire" onMouseDown={(event) => event.preventDefault()} onClick={() => adjustCanvasSize("down")}>
+                A-
+              </button>
+              <button type="button" className="chip-button chip-button-compact" aria-label="Agrandir" title="Agrandir" onMouseDown={(event) => event.preventDefault()} onClick={() => adjustCanvasSize("up")}>
+                A+
+              </button>
             </div>
 
             <div className="editor-local-toolbar-group">
@@ -2984,34 +3109,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             {selectedSymbol ? (
               <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
                 <span className="selected-block-label">Symbole {selectedSymbol.label}</span>
-                <button
-                  type="button"
-                  className="chip-button chip-button-compact"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => updateSymbolStyle(selectedSymbol.id, { fontSize: Math.max(0.92, selectedSymbol.fontSize - 0.12) })}
-                >
-                  A-
-                </button>
-                <button
-                  type="button"
-                  className="chip-button chip-button-compact"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => updateSymbolStyle(selectedSymbol.id, { fontSize: Math.min(2.4, selectedSymbol.fontSize + 0.12) })}
-                >
-                  A+
-                </button>
-                {COLOR_OPTIONS.map((option) => (
-                  <button
-                    key={`selected-symbol-${option.id}`}
-                    type="button"
-                    className={`color-chip ${state.activeColor === option.value ? "color-chip-active" : ""}`}
-                    style={{ backgroundColor: option.value, color: option.value }}
-                    aria-label={option.label}
-                    title={option.label}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => applyActiveColor(option.value)}
-                  />
-                ))}
                 <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => removeSymbol(selectedSymbol.id)}>
                   Supprimer
                 </button>
@@ -3117,7 +3214,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   blockNodeRefs.current[block.id] = node;
                 }}
                 className={`floating-math-block ${selectedBlockIds.includes(block.id) ? "floating-math-block-selected" : ""}`}
-                style={{ left: `${block.x}px`, top: `${block.y}px`, color: block.color }}
+                style={{ left: `${block.x}px`, top: `${block.y}px`, color: block.color, fontSize: `${block.fontSize}rem`, fontWeight: block.fontWeight, fontStyle: block.fontStyle }}
                 onMouseDown={(event) => {
                   startDragging("block", block.id, block.x, block.y, event);
                 }}
@@ -3142,7 +3239,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   symbolNodeRefs.current[symbol.id] = node;
                 }}
                 className={`floating-math-symbol ${selectedSymbolIds.includes(symbol.id) ? "floating-math-symbol-selected" : ""}`}
-                style={{ left: `${symbol.x}px`, top: `${symbol.y}px`, color: symbol.color, fontSize: `${symbol.fontSize}rem` }}
+                style={{ left: `${symbol.x}px`, top: `${symbol.y}px`, color: symbol.color, fontSize: `${symbol.fontSize}rem`, fontWeight: symbol.fontWeight, fontStyle: symbol.fontStyle }}
                 onMouseDown={(event) => {
                   startDragging("symbol", symbol.id, symbol.x, symbol.y, event);
                 }}
@@ -3158,7 +3255,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   textBoxNodeRefs.current[textBox.id] = node;
                 }}
                 className={`floating-text-box ${textBox.variant === "note" ? "floating-text-box-note" : ""} ${selectedTextBoxIds.includes(textBox.id) ? "floating-text-box-selected" : ""}`}
-                style={{ left: `${textBox.x}px`, top: `${textBox.y}px`, width: `${textBox.width}px`, color: textBox.color }}
+                style={{ left: `${textBox.x}px`, top: `${textBox.y}px`, width: `${textBox.width}px`, color: textBox.color, fontSize: `${textBox.fontSize}rem`, fontWeight: textBox.fontWeight, fontStyle: textBox.fontStyle }}
                 onMouseDown={(event) => {
                   if (editingTextBoxId === textBox.id) {
                     return;
@@ -3252,7 +3349,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       strokeNodeRefs.current[stroke.id] = node;
                     }}
                     className={`canvas-draw-stroke-group ${selectedStrokeIds.includes(stroke.id) ? "canvas-draw-stroke-group-selected" : ""}`}
-                    style={{ color: stroke.color }}
+                    style={{ color: stroke.color, "--stroke-width": `${stroke.width}px` } as ReactCSSProperties}
                     onMouseDown={(event) => {
                       if (advancedTool === "draw") {
                         return;
