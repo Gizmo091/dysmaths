@@ -28,6 +28,7 @@ type FractionBlock = {
   denominator: string;
   simplified: string;
   caption: string;
+  color: string;
   numeratorStrike?: boolean;
   denominatorStrike?: boolean;
   x: number;
@@ -43,6 +44,7 @@ type DivisionBlock = {
   quotient: string;
   remainder: string;
   caption: string;
+  color: string;
   x: number;
   y: number;
   width: number;
@@ -55,6 +57,7 @@ type PowerBlock = {
   exponent: string;
   result: string;
   caption: string;
+  color: string;
   x: number;
   y: number;
   width: number;
@@ -66,6 +69,7 @@ type RootBlock = {
   radicand: string;
   result: string;
   caption: string;
+  color: string;
   x: number;
   y: number;
   width: number;
@@ -87,6 +91,7 @@ type FloatingTextBox = {
   type: "textBox";
   variant?: "default" | "note";
   text: string;
+  color: string;
   x: number;
   y: number;
   width: number;
@@ -99,6 +104,7 @@ type FreehandPoint = {
 
 type FreehandStroke = {
   id: string;
+  color: string;
   points: FreehandPoint[];
 };
 
@@ -107,6 +113,7 @@ type MathBlock = FractionBlock | DivisionBlock | PowerBlock | RootBlock;
 type WriterState = {
   title: string;
   mode: StudyMode;
+  activeColor: string;
   textHtml: string;
   blocks: MathBlock[];
   symbols: FloatingSymbol[];
@@ -202,6 +209,7 @@ const PAPER_LINE_STEP_REM = 2.95;
 const CANVAS_GRID_LEFT_REM = 4.8;
 const CANVAS_GRID_TOP_REM = 1.25;
 const MAX_SNAP_THRESHOLD_PX = 10;
+const DEFAULT_ACTIVE_COLOR = "#1f2d3d";
 
 const DEFAULT_TEXT_HTML = [
   "<p><strong>Commence ici :</strong> écris librement ta méthode, tes calculs et ta réponse.</p>",
@@ -211,6 +219,7 @@ const DEFAULT_TEXT_HTML = [
 const DEFAULT_STATE: WriterState = {
   title: "Mon document de maths",
   mode: "college",
+  activeColor: DEFAULT_ACTIVE_COLOR,
   textHtml: DEFAULT_TEXT_HTML,
   blocks: [],
   symbols: [],
@@ -513,16 +522,35 @@ function parseStoredState(raw: string): WriterState | null {
 
     return {
       ...parsed,
-      symbols: Array.isArray(parsed.symbols) ? parsed.symbols : [],
-      textBoxes: Array.isArray((parsed as { textBoxes?: unknown }).textBoxes) ? (parsed as { textBoxes: FloatingTextBox[] }).textBoxes : [],
+      activeColor: typeof (parsed as { activeColor?: unknown }).activeColor === "string" ? parsed.activeColor : DEFAULT_ACTIVE_COLOR,
+      blocks: parsed.blocks.map((block) => ({
+        ...block,
+        color: typeof (block as { color?: unknown }).color === "string" ? (block as { color: string }).color : DEFAULT_ACTIVE_COLOR
+      })),
+      symbols: Array.isArray(parsed.symbols)
+        ? parsed.symbols.map((symbol) => ({
+            ...symbol,
+            color: typeof symbol.color === "string" ? symbol.color : DEFAULT_ACTIVE_COLOR
+          }))
+        : [],
+      textBoxes: Array.isArray((parsed as { textBoxes?: unknown }).textBoxes)
+        ? (parsed as { textBoxes: FloatingTextBox[] }).textBoxes.map((textBox) => ({
+            ...textBox,
+            color: typeof textBox.color === "string" ? textBox.color : DEFAULT_ACTIVE_COLOR
+          }))
+        : [],
       strokes: Array.isArray((parsed as { strokes?: unknown }).strokes)
         ? (parsed as { strokes: FreehandStroke[] }).strokes.filter(
             (stroke) =>
               Boolean(stroke) &&
               typeof stroke.id === "string" &&
+              typeof stroke.color !== "number" &&
               Array.isArray(stroke.points) &&
               stroke.points.every((point) => point && typeof point.x === "number" && typeof point.y === "number")
-          )
+          ).map((stroke) => ({
+            ...stroke,
+            color: typeof stroke.color === "string" ? stroke.color : DEFAULT_ACTIVE_COLOR
+          }))
         : []
     };
   } catch {
@@ -1046,7 +1074,7 @@ export function MathWorkbook() {
 
           setState((current) => ({
             ...current,
-            strokes: [...current.strokes, { id: createId("stroke"), points: normalizedPoints }]
+            strokes: [...current.strokes, { id: createId("stroke"), color: current.activeColor, points: normalizedPoints }]
           }));
           scheduleTransientHistoryCommit("edit");
         } else {
@@ -1125,7 +1153,18 @@ export function MathWorkbook() {
     };
 
     if (type === "fraction") {
-      return { id: createId("fraction"), type, numerator: "", denominator: "", simplified: "", caption: "", numeratorStrike: false, denominatorStrike: false, ...position } satisfies MathBlock;
+      return {
+        id: createId("fraction"),
+        type,
+        numerator: "",
+        denominator: "",
+        simplified: "",
+        caption: "",
+        color: state.activeColor,
+        numeratorStrike: false,
+        denominatorStrike: false,
+        ...position
+      } satisfies MathBlock;
     }
 
     if (type === "division") {
@@ -1137,15 +1176,16 @@ export function MathWorkbook() {
         quotient: "",
         remainder: "",
         caption: "",
+        color: state.activeColor,
         ...position
       } satisfies MathBlock;
     }
 
     if (type === "power") {
-      return { id: createId("power"), type, base: "", exponent: "", result: "", caption: "", ...position } satisfies MathBlock;
+      return { id: createId("power"), type, base: "", exponent: "", result: "", caption: "", color: state.activeColor, ...position } satisfies MathBlock;
     }
 
-    return { id: createId("root"), type, radicand: "", result: "", caption: "", ...position } satisfies MathBlock;
+    return { id: createId("root"), type, radicand: "", result: "", caption: "", color: state.activeColor, ...position } satisfies MathBlock;
   }
 
 function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number) {
@@ -1156,7 +1196,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       content: shortcut.content.trim() || shortcut.label,
       x,
       y,
-      color: COLOR_OPTIONS[0].value,
+      color: state.activeColor,
       fontSize: DEFAULT_CANVAS_FONT_SIZE_REM
   } satisfies FloatingSymbol;
 }
@@ -1167,6 +1207,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       type: "textBox",
       variant,
       text: "",
+      color: state.activeColor,
       x,
       y: Math.max(18, y - FLOATING_TEXTBOX_Y_OFFSET),
       width: variant === "note" ? 72 : 100
@@ -1697,13 +1738,36 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }));
   }
 
-  function updateTextBox(textBoxId: string, updates: Partial<Pick<FloatingTextBox, "text" | "width">>) {
+  function updateTextBox(textBoxId: string, updates: Partial<Pick<FloatingTextBox, "text" | "width" | "color">>) {
     setState((current) => ({
       ...current,
       textBoxes: current.textBoxes.map((textBox) =>
         textBox.id === textBoxId ? { ...textBox, ...updates } : textBox
       )
     }));
+  }
+
+  function applyActiveColor(color: string) {
+    setState((current) => ({
+      ...current,
+      activeColor: color,
+      blocks: current.blocks.map((block) =>
+        selectedBlockIdsRef.current.includes(block.id) ? { ...block, color } : block
+      ),
+      symbols: current.symbols.map((symbol) =>
+        selectedSymbolIdsRef.current.includes(symbol.id) ? { ...symbol, color } : symbol
+      ),
+      textBoxes: current.textBoxes.map((textBox) =>
+        selectedTextBoxIdsRef.current.includes(textBox.id) ? { ...textBox, color } : textBox
+      ),
+      strokes: current.strokes.map((stroke) =>
+        selectedStrokeIdsRef.current.includes(stroke.id) ? { ...stroke, color } : stroke
+      )
+    }));
+
+    if (editorRef.current && editorRef.current.contains(document.activeElement)) {
+      runCommand("foreColor", color);
+    }
   }
 
   function updateInlineBlockField(blockId: string, key: string, value: string) {
@@ -2895,12 +2959,12 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                 <button
                   key={option.id}
                   type="button"
-                  className="color-chip"
-                  style={{ backgroundColor: option.value }}
+                  className={`color-chip ${state.activeColor === option.value ? "color-chip-active" : ""}`}
+                  style={{ backgroundColor: option.value, color: option.value }}
                   aria-label={option.label}
                   title={option.label}
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => runCommand("foreColor", option.value)}
+                  onClick={() => applyActiveColor(option.value)}
                 />
               ))}
             </div>
@@ -2940,12 +3004,12 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   <button
                     key={`selected-symbol-${option.id}`}
                     type="button"
-                    className="color-chip"
-                    style={{ backgroundColor: option.value }}
+                    className={`color-chip ${state.activeColor === option.value ? "color-chip-active" : ""}`}
+                    style={{ backgroundColor: option.value, color: option.value }}
                     aria-label={option.label}
                     title={option.label}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => updateSymbolStyle(selectedSymbol.id, { color: option.value })}
+                    onClick={() => applyActiveColor(option.value)}
                   />
                 ))}
                 <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => removeSymbol(selectedSymbol.id)}>
@@ -3053,7 +3117,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   blockNodeRefs.current[block.id] = node;
                 }}
                 className={`floating-math-block ${selectedBlockIds.includes(block.id) ? "floating-math-block-selected" : ""}`}
-                style={{ left: `${block.x}px`, top: `${block.y}px` }}
+                style={{ left: `${block.x}px`, top: `${block.y}px`, color: block.color }}
                 onMouseDown={(event) => {
                   startDragging("block", block.id, block.x, block.y, event);
                 }}
@@ -3094,7 +3158,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   textBoxNodeRefs.current[textBox.id] = node;
                 }}
                 className={`floating-text-box ${textBox.variant === "note" ? "floating-text-box-note" : ""} ${selectedTextBoxIds.includes(textBox.id) ? "floating-text-box-selected" : ""}`}
-                style={{ left: `${textBox.x}px`, top: `${textBox.y}px`, width: `${textBox.width}px` }}
+                style={{ left: `${textBox.x}px`, top: `${textBox.y}px`, width: `${textBox.width}px`, color: textBox.color }}
                 onMouseDown={(event) => {
                   if (editingTextBoxId === textBox.id) {
                     return;
@@ -3188,6 +3252,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       strokeNodeRefs.current[stroke.id] = node;
                     }}
                     className={`canvas-draw-stroke-group ${selectedStrokeIds.includes(stroke.id) ? "canvas-draw-stroke-group-selected" : ""}`}
+                    style={{ color: stroke.color }}
                     onMouseDown={(event) => {
                       if (advancedTool === "draw") {
                         return;
