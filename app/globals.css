@@ -167,6 +167,11 @@ button {
   border-color: transparent;
 }
 
+.toolbar-icon-button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
 .toolbar-popover-shell {
   position: absolute;
   top: calc(100% - 0.15rem);

@@ -172,6 +172,7 @@ type CanvasQuickMenu =
 const STORAGE_KEY = "maths-facile-free-layout-v1";
 const FLOATING_TEXTBOX_Y_OFFSET = 10;
 const CANVAS_QUICK_MENU_OFFSET_X = 30;
+const MAX_HISTORY_STEPS = 80;
 
 const DEFAULT_TEXT_HTML = [
   "<p><strong>Commence ici :</strong> écris librement ta méthode, tes calculs et ta réponse.</p>",
@@ -260,6 +261,21 @@ function safeFileName(value: string) {
 function getTextBoxWidth(text: string) {
   const visibleText = text.trim();
   return Math.max(36, Math.min(920, visibleText.length * 14 + 12));
+}
+
+function cloneWriterState(value: WriterState) {
+  return JSON.parse(JSON.stringify(value)) as WriterState;
+}
+
+function areWriterStatesEqual(left: WriterState, right: WriterState) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function getGridDimensions(count: number, columns: number) {
+  return {
+    columns,
+    rows: Math.ceil(count / columns)
+  };
 }
 
 function parseStoredState(raw: string): WriterState | null {
@@ -373,6 +389,8 @@ function renderMathPreview(block: MathBlock) {
 
 export function MathWorkbook() {
   const [state, setState] = useState<WriterState>(DEFAULT_STATE);
+  const [historyPast, setHistoryPast] = useState<WriterState[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<WriterState[]>([]);
   const [openMenu, setOpenMenu] = useState<UtilityMenu>(null);
   const [modalState, setModalState] = useState<ModalState>(null);
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
@@ -404,6 +422,13 @@ export function MathWorkbook() {
   const textBoxNodeRefs = useRef<Record<string, HTMLElement | null>>({});
   const pendingFocusTextBoxIdRef = useRef<string | null>(null);
   const fractionInputRefs = useRef<Record<string, { numerator?: HTMLInputElement | null; denominator?: HTMLInputElement | null }>>({});
+  const historyInitializedRef = useRef(false);
+  const skipHistoryRef = useRef(false);
+  const previousStateRef = useRef<WriterState>(cloneWriterState(DEFAULT_STATE));
+  const stateRef = useRef<WriterState>(cloneWriterState(DEFAULT_STATE));
+  const transientHistorySnapshotRef = useRef<WriterState | null>(null);
+  const transientHistoryKindRef = useRef<"drag" | "edit" | null>(null);
+  const suspendHistoryRef = useRef(false);
 
   const activeInlineShortcuts = useMemo(
     () =>
@@ -466,6 +491,42 @@ export function MathWorkbook() {
     symbolsRef.current = state.symbols;
     textBoxesRef.current = state.textBoxes;
   }, [state.blocks, state.symbols, state.textBoxes]);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    if (!historyInitializedRef.current) {
+      previousStateRef.current = cloneWriterState(state);
+      historyInitializedRef.current = true;
+      return;
+    }
+
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      previousStateRef.current = cloneWriterState(state);
+      return;
+    }
+
+    if (suspendHistoryRef.current) {
+      return;
+    }
+
+    if (areWriterStatesEqual(previousStateRef.current, state)) {
+      return;
+    }
+
+    const previousSnapshot = cloneWriterState(previousStateRef.current);
+    previousStateRef.current = cloneWriterState(state);
+
+    setHistoryPast((current) => [...current.slice(-(MAX_HISTORY_STEPS - 1)), previousSnapshot]);
+    setHistoryFuture([]);
+  }, [isHydrated, state]);
 
   useEffect(() => {
     selectedBlockIdsRef.current = selectedBlockIds;
@@ -599,8 +660,14 @@ export function MathWorkbook() {
     }
 
     function handleMouseUp() {
+      const draggedSession = dragRef.current;
+
       if (pendingSelectionRef.current && !pendingSelectionRef.current.started) {
         openCanvasQuickMenuAtPoint(pendingSelectionRef.current.originX, pendingSelectionRef.current.originY);
+      }
+
+      if (draggedSession) {
+        commitTransientHistorySession("drag");
       }
 
       dragRef.current = null;
@@ -855,6 +922,7 @@ export function MathWorkbook() {
   }
 
   function beginTextBoxEditing(textBoxId: string) {
+    beginTransientHistorySession("edit");
     setEditingTextBoxId(textBoxId);
     selectSingleTextBox(textBoxId);
     pendingFocusTextBoxIdRef.current = textBoxId;
@@ -886,6 +954,7 @@ export function MathWorkbook() {
 
   function createTextBoxAt(x: number, y: number) {
     const textBox = createFloatingTextBox(x, y);
+    beginTransientHistorySession("edit");
 
     setState((current) => ({
       ...current,
@@ -898,6 +967,7 @@ export function MathWorkbook() {
   function createStructuredToolAt(type: StructuredTool, x: number, y: number) {
     if (type === "fraction") {
       const block = { ...createBlock("fraction"), x, y };
+      beginTransientHistorySession("edit");
 
       setState((current) => ({
         ...current,
@@ -1040,6 +1110,7 @@ export function MathWorkbook() {
   function openInsertModal(type: StructuredTool) {
     if (type === "fraction") {
       const block = createBlock("fraction");
+      beginTransientHistorySession("edit");
 
       setState((current) => ({
         ...current,
@@ -1069,6 +1140,7 @@ export function MathWorkbook() {
     if (block.type === "fraction") {
       setOpenMenu(null);
       selectSingleBlock(blockId);
+      beginTransientHistorySession("edit");
       setEditingFraction({ blockId, field: "numerator" });
       return;
     }
@@ -1165,16 +1237,19 @@ export function MathWorkbook() {
 
     if (!block || block.type !== "fraction") {
       setEditingFraction(null);
+      scheduleTransientHistoryCommit("edit");
       return;
     }
 
     if (!block.numerator.trim() && !block.denominator.trim()) {
       removeBlock(blockId);
       setEditingFraction(null);
+      scheduleTransientHistoryCommit("edit");
       return;
     }
 
     setEditingFraction(null);
+    scheduleTransientHistoryCommit("edit");
   }
 
   function handleFractionKeyDown(blockId: string, field: "numerator" | "denominator", event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -1214,11 +1289,219 @@ export function MathWorkbook() {
     clearFloatingSelection();
   }
 
+  function resetTransientUi() {
+    setOpenMenu(null);
+    setModalState(null);
+    setCanvasQuickMenu(null);
+    setEditingFraction(null);
+    setEditingTextBoxId(null);
+    clearFloatingSelection();
+  }
+
+  function beginTransientHistorySession(kind: "drag" | "edit") {
+    if (transientHistorySnapshotRef.current) {
+      return;
+    }
+
+    transientHistorySnapshotRef.current = cloneWriterState(stateRef.current);
+    transientHistoryKindRef.current = kind;
+    suspendHistoryRef.current = true;
+  }
+
+  function commitTransientHistorySession(kind: "drag" | "edit") {
+    if (!transientHistorySnapshotRef.current || transientHistoryKindRef.current !== kind) {
+      return;
+    }
+
+    const startSnapshot = transientHistorySnapshotRef.current;
+    const currentSnapshot = cloneWriterState(stateRef.current);
+
+    suspendHistoryRef.current = false;
+    transientHistorySnapshotRef.current = null;
+    transientHistoryKindRef.current = null;
+
+    if (!areWriterStatesEqual(startSnapshot, currentSnapshot)) {
+      setHistoryPast((current) => [...current.slice(-(MAX_HISTORY_STEPS - 1)), startSnapshot]);
+      setHistoryFuture([]);
+    }
+
+    previousStateRef.current = currentSnapshot;
+  }
+
+  function scheduleTransientHistoryCommit(kind: "drag" | "edit") {
+    window.setTimeout(() => {
+      commitTransientHistorySession(kind);
+    }, 0);
+  }
+
+  function undoHistory() {
+    if (historyPast.length === 0) {
+      return;
+    }
+
+    const previous = historyPast[historyPast.length - 1];
+    skipHistoryRef.current = true;
+    setHistoryPast((current) => current.slice(0, -1));
+    setHistoryFuture((current) => [cloneWriterState(state), ...current].slice(0, MAX_HISTORY_STEPS));
+    resetTransientUi();
+    setState(cloneWriterState(previous));
+  }
+
+  function redoHistory() {
+    if (historyFuture.length === 0) {
+      return;
+    }
+
+    const next = historyFuture[0];
+    skipHistoryRef.current = true;
+    setHistoryFuture((current) => current.slice(1));
+    setHistoryPast((current) => [...current.slice(-(MAX_HISTORY_STEPS - 1)), cloneWriterState(state)]);
+    resetTransientUi();
+    setState(cloneWriterState(next));
+  }
+
+  function alignSelectedItems() {
+    if (selectedCount < 2) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const spacing = 12;
+    const measuredItems = [
+      ...state.blocks
+        .filter((block) => selectedBlockIds.includes(block.id))
+        .map((block) => {
+          const node = blockNodeRefs.current[block.id];
+          const rect = node?.getBoundingClientRect();
+
+          return {
+            id: block.id,
+            type: "block" as const,
+            x: block.x,
+            y: block.y,
+            width: Math.max(24, rect?.width ?? block.width ?? 64),
+            height: Math.max(24, rect?.height ?? 64)
+          };
+        }),
+      ...state.symbols
+        .filter((symbol) => selectedSymbolIds.includes(symbol.id))
+        .map((symbol) => {
+          const node = symbolNodeRefs.current[symbol.id];
+          const rect = node?.getBoundingClientRect();
+
+          return {
+            id: symbol.id,
+            type: "symbol" as const,
+            x: symbol.x,
+            y: symbol.y,
+            width: Math.max(24, rect?.width ?? 32),
+            height: Math.max(24, rect?.height ?? symbol.fontSize * 18)
+          };
+        }),
+      ...state.textBoxes
+        .filter((textBox) => selectedTextBoxIds.includes(textBox.id))
+        .map((textBox) => {
+          const node = textBoxNodeRefs.current[textBox.id];
+          const rect = node?.getBoundingClientRect();
+
+          return {
+            id: textBox.id,
+            type: "textBox" as const,
+            x: textBox.x,
+            y: textBox.y,
+            width: Math.max(24, rect?.width ?? textBox.width),
+            height: Math.max(24, rect?.height ?? 32)
+          };
+        })
+    ].sort((left, right) => (left.y === right.y ? left.x - right.x : left.y - right.y));
+
+    if (measuredItems.length < 2) {
+      return;
+    }
+
+    const anchorX = Math.min(...measuredItems.map((item) => item.x));
+    const anchorY = Math.min(...measuredItems.map((item) => item.y));
+    const canvasBounds = canvas.getBoundingClientRect();
+
+    let bestLayout:
+      | {
+          positions: Array<{ id: string; type: "block" | "symbol" | "textBox"; x: number; y: number }>;
+          area: number;
+        }
+      | null = null;
+
+    for (let columnCount = 1; columnCount <= measuredItems.length; columnCount += 1) {
+      const { columns, rows } = getGridDimensions(measuredItems.length, columnCount);
+      const colWidths = Array.from({ length: columns }, () => 0);
+      const rowHeights = Array.from({ length: rows }, () => 0);
+
+      measuredItems.forEach((item, index) => {
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+        colWidths[col] = Math.max(colWidths[col], item.width);
+        rowHeights[row] = Math.max(rowHeights[row], item.height);
+      });
+
+      const totalWidth = colWidths.reduce((sum, width) => sum + width, 0) + spacing * Math.max(0, columns - 1);
+      const totalHeight = rowHeights.reduce((sum, height) => sum + height, 0) + spacing * Math.max(0, rows - 1);
+      const positions = measuredItems.map((item, index) => {
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+        const x = anchorX + colWidths.slice(0, col).reduce((sum, width) => sum + width, 0) + spacing * col;
+        const y = anchorY + rowHeights.slice(0, row).reduce((sum, height) => sum + height, 0) + spacing * row;
+
+        return {
+          id: item.id,
+          type: item.type,
+          x: Math.max(18, Math.min(canvasBounds.width - item.width - 18, x)),
+          y: Math.max(18, Math.min(canvasBounds.height - item.height - 18, y))
+        };
+      });
+
+      const area = totalWidth * totalHeight;
+
+      if (!bestLayout || area < bestLayout.area) {
+        bestLayout = { positions, area };
+      }
+    }
+
+    if (!bestLayout) {
+      return;
+    }
+
+    const positionMap = new Map(bestLayout.positions.map((item) => [`${item.type}:${item.id}`, item]));
+
+    setCanvasQuickMenu(null);
+    closeFloatingTextEditing();
+    setState((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) => {
+        const nextPosition = positionMap.get(`block:${block.id}`);
+        return nextPosition ? { ...block, x: nextPosition.x, y: nextPosition.y } : block;
+      }),
+      symbols: current.symbols.map((symbol) => {
+        const nextPosition = positionMap.get(`symbol:${symbol.id}`);
+        return nextPosition ? { ...symbol, x: nextPosition.x, y: nextPosition.y } : symbol;
+      }),
+      textBoxes: current.textBoxes.map((textBox) => {
+        const nextPosition = positionMap.get(`textBox:${textBox.id}`);
+        return nextPosition ? { ...textBox, x: nextPosition.x, y: nextPosition.y } : textBox;
+      })
+    }));
+  }
+
   function startDragging(itemType: "block" | "symbol" | "textBox", itemId: string, x: number, y: number, event: ReactMouseEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
     setCanvasQuickMenu(null);
     setIsCanvasInteracting(true);
+
+    beginTransientHistorySession("drag");
 
     const canvas = canvasRef.current;
 
@@ -1657,6 +1940,26 @@ export function MathWorkbook() {
             <div className="toolbar-icon-actions">
               <button
                 type="button"
+                className="toolbar-icon-button"
+                aria-label="Annuler"
+                title="Annuler"
+                disabled={historyPast.length === 0}
+                onClick={undoHistory}
+              >
+                ↶
+              </button>
+              <button
+                type="button"
+                className="toolbar-icon-button"
+                aria-label="Refaire"
+                title="Refaire"
+                disabled={historyFuture.length === 0}
+                onClick={redoHistory}
+              >
+                ↷
+              </button>
+              <button
+                type="button"
                 className={`toolbar-icon-button ${openMenu === "export" ? "toolbar-icon-button-active" : ""}`}
                 aria-label="Exporter"
                 title="Exporter"
@@ -1810,6 +2113,9 @@ export function MathWorkbook() {
             {selectedCount > 1 ? (
               <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
                 <span className="selected-block-label">{selectedCount} éléments sélectionnés</span>
+                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={alignSelectedItems}>
+                  Aligner
+                </button>
                 <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={removeSelectedItems}>
                   Supprimer
                 </button>
@@ -2071,6 +2377,7 @@ export function MathWorkbook() {
                       if (!event.currentTarget.value.trim()) {
                         removeTextBox(textBox.id);
                         setEditingTextBoxId(null);
+                        scheduleTransientHistoryCommit("edit");
                         return;
                       }
 
@@ -2080,6 +2387,7 @@ export function MathWorkbook() {
                       });
                       setEditingTextBoxId(null);
                       clearFloatingSelection();
+                      scheduleTransientHistoryCommit("edit");
                     }}
                   />
                 ) : (
