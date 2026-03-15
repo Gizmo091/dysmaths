@@ -3986,7 +3986,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       strokeNodeRefs.current[stroke.id] = node;
                     }}
                     className={`canvas-draw-stroke-group ${selectedStrokeIds.includes(stroke.id) ? "canvas-draw-stroke-group-selected" : ""}`}
-                    style={{ color: stroke.color, "--stroke-width": `${stroke.width}px` } as ReactCSSProperties}
+                    style={{ "--stroke-width": `${stroke.width}px` } as ReactCSSProperties}
                     onMouseDown={(event) => {
                       if (advancedTool === "draw") {
                         return;
@@ -3995,13 +3995,15 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       startDragging("stroke", stroke.id, strokeBounds.x, strokeBounds.y, event);
                     }}
                   >
-                    <path className="canvas-draw-hit" d={createStrokePath(stroke.points)} />
-                    <path className="canvas-draw-path" d={createStrokePath(stroke.points)} />
-                    {selectedStrokeIds.includes(stroke.id) ? <path className="canvas-draw-path canvas-draw-path-selected" d={createStrokePath(stroke.points)} /> : null}
+                    <path className="canvas-draw-hit" d={createStrokePath(stroke.points)} fill="none" />
+                    <path className="canvas-draw-path" d={createStrokePath(stroke.points)} fill="none" stroke={stroke.color} />
+                    {selectedStrokeIds.includes(stroke.id) ? (
+                      <path className="canvas-draw-path canvas-draw-path-selected" d={createStrokePath(stroke.points)} fill="none" stroke="rgba(217, 119, 69, 0.8)" />
+                    ) : null}
                   </g>
                 );
               })}
-              {draftStroke && draftStroke.length >= 2 ? <path className="canvas-draw-path canvas-draw-path-draft" d={createStrokePath(draftStroke)} /> : null}
+              {draftStroke && draftStroke.length >= 2 ? <path className="canvas-draw-path canvas-draw-path-draft" d={createStrokePath(draftStroke)} fill="none" stroke={state.activeColor} /> : null}
             </svg>
 
             {snapGuides.x !== null ? (
