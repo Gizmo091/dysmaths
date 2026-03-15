@@ -217,7 +217,7 @@ type SnapGuides = {
   y: number | null;
 };
 
-type AdvancedTool = "note" | "draw" | null;
+type AdvancedTool = "move" | "note" | "draw" | null;
 
 const STORAGE_KEY = "maths-facile-free-layout-v1";
 const FLOATING_TEXTBOX_Y_OFFSET = 10;
@@ -1110,7 +1110,7 @@ export function MathWorkbook() {
       if (pendingSelectionRef.current && !pendingSelectionRef.current.started) {
         if (advancedToolRef.current === "note") {
           createAnnotationTextBoxAt(pendingSelectionRef.current.originX, pendingSelectionRef.current.originY);
-        } else {
+        } else if (advancedToolRef.current !== "move") {
           openCanvasQuickMenuAtPoint(pendingSelectionRef.current.originX, pendingSelectionRef.current.originY);
         }
       }
@@ -1520,6 +1520,14 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }));
     beginTextBoxEditing(textBox.id);
     setCanvasQuickMenu(null);
+  }
+
+  function createToolbarTextBox() {
+    const canvas = canvasRef.current;
+    const bounds = canvas?.getBoundingClientRect();
+    const fallbackX = Math.max(96, Math.round(((bounds?.width ?? 720) * 0.24)));
+    const fallbackY = Math.max(96, Math.round(((bounds?.height ?? 1020) * 0.14)));
+    createTextBoxAt(fallbackX, fallbackY);
   }
 
   function createAnnotationTextBoxAt(x: number, y: number) {
@@ -2876,34 +2884,41 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     setOpenMenu((current) => (current === menu ? null : menu));
   }
 
+  function handleHeaderDelete() {
+    if (selectedCount === 0) {
+      return;
+    }
+
+    if (selectedCount > 1) {
+      removeSelectedItems();
+      return;
+    }
+
+    if (selectedBlock) {
+      removeBlock(selectedBlock.id);
+      return;
+    }
+
+    if (selectedSymbol) {
+      removeSymbol(selectedSymbol.id);
+      return;
+    }
+
+    if (selectedTextBox) {
+      removeTextBox(selectedTextBox.id);
+      return;
+    }
+
+    if (selectedStroke) {
+      removeStroke(selectedStroke.id);
+    }
+  }
+
   return (
     <main className="editor-shell">
       <header className="top-toolbar">
         <div className="top-toolbar-inner">
           <div className="toolbar-row toolbar-row-primary">
-            <div className="toolbar-shortcut-group" aria-label="Blocs posés">
-              {activeStructuredTools.map((tool) => (
-                <button
-                  key={tool.id}
-                  type="button"
-                  className="toolbar-shortcut"
-                  draggable
-                  title={tool.hint}
-                  onDragStart={(event) => handleToolDragStart({ kind: "structured", toolId: tool.id }, event)}
-                  onDragEnd={handleToolDragEnd}
-                  onClick={() => {
-                    if (shouldIgnoreToolbarClick()) {
-                      return;
-                    }
-
-                    openInsertModal(tool.id);
-                  }}
-                >
-                  {tool.label}
-                </button>
-              ))}
-            </div>
-
             <div className="toolbar-icon-actions">
               <button
                 type="button"
@@ -2947,24 +2962,40 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
           </div>
 
           <div className="toolbar-row toolbar-row-secondary">
-            <div className="toolbar-shortcut-group toolbar-advanced-group" aria-label="Outils avancés">
+            <div className="toolbar-shortcut-group" aria-label="Outils d'insertion">
               <button
                 type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "note" ? "toolbar-shortcut-active" : ""}`}
-                title="Petit texte"
-                onClick={() => setAdvancedTool((current) => (current === "note" ? null : "note"))}
+                className="toolbar-shortcut toolbar-shortcut-symbol"
+                aria-label="Texte"
+                title="Ajouter une zone de texte"
+                onClick={createToolbarTextBox}
               >
-                Aa
+                T
               </button>
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "draw" ? "toolbar-shortcut-active" : ""}`}
-                title="Dessin libre"
-                onClick={() => setAdvancedTool((current) => (current === "draw" ? null : "draw"))}
-              >
-                ✎
-              </button>
+              {activeStructuredTools.map((tool) => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  className="toolbar-shortcut toolbar-shortcut-symbol"
+                  aria-label={tool.label}
+                  draggable
+                  title={tool.hint}
+                  onDragStart={(event) => handleToolDragStart({ kind: "structured", toolId: tool.id }, event)}
+                  onDragEnd={handleToolDragEnd}
+                  onClick={() => {
+                    if (shouldIgnoreToolbarClick()) {
+                      return;
+                    }
+
+                    openInsertModal(tool.id);
+                  }}
+                >
+                  {tool.id === "fraction" ? "a/b" : tool.id === "division" ? "÷" : tool.id === "power" ? "x²" : "√"}
+                </button>
+              ))}
             </div>
+
+            <div className="toolbar-separator" aria-hidden="true" />
 
             <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis maths">
               {activeInlineShortcuts.flatMap((group) => group.items).map((shortcut) => (
@@ -2987,6 +3018,76 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   {shortcut.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="toolbar-row toolbar-row-format" aria-label="Mise en forme">
+            <div className="editor-local-toolbar-group">
+              <button type="button" className="chip-button chip-button-compact" aria-label="Gras" title="Gras" onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasBold}>
+                B
+              </button>
+              <button type="button" className="chip-button chip-button-compact" aria-label="Italique" title="Italique" onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasItalic}>
+                I
+              </button>
+              <button type="button" className="chip-button chip-button-compact" aria-label="Réduire" title="Réduire" onMouseDown={(event) => event.preventDefault()} onClick={() => adjustCanvasSize("down")}>
+                A-
+              </button>
+              <button type="button" className="chip-button chip-button-compact" aria-label="Agrandir" title="Agrandir" onMouseDown={(event) => event.preventDefault()} onClick={() => adjustCanvasSize("up")}>
+                A+
+              </button>
+            </div>
+
+            <div className="editor-local-toolbar-group">
+              {COLOR_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`color-chip ${state.activeColor === option.value ? "color-chip-active" : ""}`}
+                  style={{ backgroundColor: option.value, color: option.value }}
+                  aria-label={option.label}
+                  title={option.label}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyActiveColor(option.value)}
+                />
+              ))}
+            </div>
+
+            <div className="editor-local-toolbar-group toolbar-advanced-group" aria-label="Outils avancés">
+              <button
+                type="button"
+                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "move" ? "toolbar-shortcut-move-active" : ""}`}
+                title="Déplacer"
+                aria-label="Déplacer"
+                onClick={() => setAdvancedTool((current) => (current === "move" ? null : "move"))}
+              >
+                {"✋\uFE0E"}
+              </button>
+              <button
+                type="button"
+                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "note" ? "toolbar-shortcut-active" : ""}`}
+                title="Petit texte"
+                onClick={() => setAdvancedTool((current) => (current === "note" ? null : "note"))}
+              >
+                Aa
+              </button>
+              {selectedCount > 0 ? (
+                <button
+                  type="button"
+                  className="toolbar-shortcut toolbar-shortcut-symbol"
+                  title="Supprimer"
+                  onClick={handleHeaderDelete}
+                >
+                  ×
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "draw" ? "toolbar-shortcut-active" : ""}`}
+                title="Dessin libre"
+                onClick={() => setAdvancedTool((current) => (current === "draw" ? null : "draw"))}
+              >
+                ✎
+              </button>
             </div>
           </div>
         </div>
@@ -3058,83 +3159,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                 aria-label="Titre du document"
               />
             </div>
-            <p className="editor-sheet-note">
-              Écris librement, puis déplace les opérations posées où tu veux sur la feuille.
-            </p>
-          </div>
-
-          <div className="editor-local-toolbar" aria-label="Mise en forme du texte">
-            <div className="editor-local-toolbar-group">
-              <button type="button" className="chip-button chip-button-compact" aria-label="Gras" title="Gras" onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasBold}>
-                B
-              </button>
-              <button type="button" className="chip-button chip-button-compact" aria-label="Italique" title="Italique" onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasItalic}>
-                I
-              </button>
-              <button type="button" className="chip-button chip-button-compact" aria-label="Réduire" title="Réduire" onMouseDown={(event) => event.preventDefault()} onClick={() => adjustCanvasSize("down")}>
-                A-
-              </button>
-              <button type="button" className="chip-button chip-button-compact" aria-label="Agrandir" title="Agrandir" onMouseDown={(event) => event.preventDefault()} onClick={() => adjustCanvasSize("up")}>
-                A+
-              </button>
-            </div>
-
-            <div className="editor-local-toolbar-group">
-              {COLOR_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`color-chip ${state.activeColor === option.value ? "color-chip-active" : ""}`}
-                  style={{ backgroundColor: option.value, color: option.value }}
-                  aria-label={option.label}
-                  title={option.label}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => applyActiveColor(option.value)}
-                />
-              ))}
-            </div>
-
-            {selectedBlock ? (
-              <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
-                <span className="selected-block-label">{getBlockTitle(selectedBlock)}</span>
-                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => openEditModal(selectedBlock.id)}>
-                  Modifier
-                </button>
-                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => removeBlock(selectedBlock.id)}>
-                  Supprimer
-                </button>
-              </div>
-            ) : null}
-
-            {selectedSymbol ? (
-              <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
-                <span className="selected-block-label">Symbole {selectedSymbol.label}</span>
-                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => removeSymbol(selectedSymbol.id)}>
-                  Supprimer
-                </button>
-              </div>
-            ) : null}
-
-            {selectedTextBox ? (
-              <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
-                <span className="selected-block-label">Zone de texte</span>
-                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => beginTextBoxEditing(selectedTextBox.id)}>
-                  Modifier
-                </button>
-                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => removeTextBox(selectedTextBox.id)}>
-                  Supprimer
-                </button>
-              </div>
-            ) : null}
-
-            {selectedStroke ? (
-              <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
-                <span className="selected-block-label">Trait</span>
-                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={() => removeStroke(selectedStroke.id)}>
-                  Supprimer
-                </button>
-              </div>
-            ) : null}
           </div>
 
           <div
