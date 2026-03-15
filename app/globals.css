@@ -1061,14 +1061,16 @@ input {
   position: fixed;
   left: -200vw;
   top: 0;
-  width: 794px;
+  width: max-content;
   opacity: 0;
   pointer-events: none;
 }
 
 .export-sheet {
-  width: 794px;
-  min-height: 1123px;
+  position: relative;
+  isolation: isolate;
+  width: max-content;
+  min-height: 0;
   padding: 0;
   margin: 0;
   background: #fffdf9;
@@ -1092,7 +1094,6 @@ input {
 }
 
 .export-sheet > :not(.export-sheet-overlay) {
-  position: relative;
   z-index: 1;
 }
 

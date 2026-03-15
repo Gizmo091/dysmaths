@@ -3088,9 +3088,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }
   }
 
-  function createExportSheetOverlay(sheetStyle: SheetStyle) {
-    const width = 794;
-    const height = 1123;
+  function createExportSheetOverlay(sheetStyle: SheetStyle, width: number, height: number) {
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "export-sheet-overlay");
     overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -3118,11 +3116,11 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }
 
     if (sheetStyle === "seyes") {
-      const marginX = 151;
-      const major = 30.24;
-      const minor = 7.56;
+      const major = mmToPx(SEYES_MAJOR_MM);
+      const minor = mmToPx(SEYES_MINOR_MM);
+      const marginX = cmToPx(SEYES_MARGIN_CM);
 
-      addLine(150.5, 0, 150.5, height, "rgba(235, 146, 82, 0.45)");
+      addLine(Math.round(marginX) - 0.5, 0, Math.round(marginX) - 0.5, height, "rgba(235, 146, 82, 0.45)");
 
       for (let y = minor; y < height; y += minor) {
         const isMajor = Math.abs((y / major) - Math.round(y / major)) < 0.02;
@@ -3138,15 +3136,15 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       return overlay;
     }
 
-    const major = sheetStyle === "large-grid" ? 30.24 : 15.12;
+    const major = sheetStyle === "large-grid" ? mmToPx(8) : mmToPx(4);
     const color = sheetStyle === "large-grid" ? "rgba(187, 209, 235, 0.72)" : "rgba(187, 209, 235, 0.62)";
 
-    for (let y = major; y < 1123; y += major) {
+    for (let y = major; y < height; y += major) {
       const snappedY = Math.round(y) + 0.5;
       addLine(0, snappedY, width, snappedY, color);
     }
 
-    for (let x = major; x < 794; x += major) {
+    for (let x = major; x < width; x += major) {
       const snappedX = Math.round(x) + 0.5;
       addLine(snappedX, 0, snappedX, height, color);
     }
@@ -3159,14 +3157,17 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       return null;
     }
 
+    const liveBounds = canvasRef.current.getBoundingClientRect();
+    const exportWidth = Math.max(1, Math.round(liveBounds.width));
+    const exportHeight = Math.max(1, Math.round(liveBounds.height));
     const wrapper = document.createElement("div");
     wrapper.className = "export-clone";
 
     const clone = canvasRef.current.cloneNode(true) as HTMLElement;
     clone.classList.remove("document-canvas-drop-active", "document-canvas-interacting", "document-canvas-draw-mode");
     clone.classList.add("export-sheet");
-    clone.style.width = "794px";
-    clone.style.height = "1123px";
+    clone.style.width = `${exportWidth}px`;
+    clone.style.height = `${exportHeight}px`;
     clone.style.aspectRatio = "auto";
     clone.style.margin = "0";
     clone.style.borderRadius = "0";
@@ -3176,7 +3177,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     clone.style.setProperty("--canvas-type-size", `${getDefaultCanvasFontSize(state.sheetStyle)}rem`);
     clone.querySelectorAll(".canvas-snap-guide, .canvas-quick-menu, .canvas-quick-anchor").forEach((node) => node.remove());
 
-    const overlay = createExportSheetOverlay(state.sheetStyle);
+    const overlay = createExportSheetOverlay(state.sheetStyle, exportWidth, exportHeight);
     clone.insertBefore(overlay, clone.firstChild);
 
     wrapper.append(clone);
