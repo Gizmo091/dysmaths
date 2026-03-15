@@ -1344,11 +1344,57 @@ input {
   grid-template-columns: repeat(4, minmax(0, max-content));
   grid-gap: 0.3rem;
   gap: 0.3rem;
-  padding: 0.35rem;
+  padding: 20px;
   border-radius: 16px;
   border: 1px solid rgba(92, 108, 129, 0.14);
   background: rgba(255, 253, 249, 0.96);
   box-shadow: 0 14px 28px rgba(31, 45, 61, 0.12);
+}
+
+.canvas-selection-menu {
+  transform: translateX(-50%);
+  grid-template-columns: repeat(2, max-content);
+  padding: 5px;
+}
+
+.canvas-selection-action {
+  display: grid;
+  place-items: center;
+  min-width: 5.8rem;
+  padding-inline: 0.7rem;
+}
+
+.align-grid-icon {
+  display: grid;
+  grid-template-columns: repeat(2, 0.38rem);
+  grid-gap: 0.18rem;
+  gap: 0.18rem;
+}
+
+.align-grid-icon span {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 0.08rem;
+  background: currentColor;
+}
+
+.canvas-quick-close {
+  position: absolute;
+  top: -0.55rem;
+  right: -0.55rem;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid rgba(92, 108, 129, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.98);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(31, 45, 61, 0.14);
 }
 
 .canvas-quick-anchor {

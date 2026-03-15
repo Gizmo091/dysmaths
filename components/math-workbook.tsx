@@ -460,6 +460,33 @@ export function MathWorkbook() {
     () => state.textBoxes.find((textBox) => textBox.id === selectedTextBoxId) ?? null,
     [selectedTextBoxId, state.textBoxes]
   );
+  const multiSelectionMenuPosition = useMemo(() => {
+    if (selectedCount <= 1 || isCanvasInteracting || selectionRect || !canvasRef.current) {
+      return null;
+    }
+
+    const canvasBounds = canvasRef.current.getBoundingClientRect();
+    const selectedNodes = [
+      ...selectedBlockIds.map((id) => blockNodeRefs.current[id]),
+      ...selectedSymbolIds.map((id) => symbolNodeRefs.current[id]),
+      ...selectedTextBoxIds.map((id) => textBoxNodeRefs.current[id])
+    ].filter((node): node is HTMLElement => Boolean(node));
+
+    if (selectedNodes.length === 0) {
+      return null;
+    }
+
+    const bounds = selectedNodes.map((node) => node.getBoundingClientRect());
+    const minLeft = Math.min(...bounds.map((rect) => rect.left - canvasBounds.left));
+    const maxRight = Math.max(...bounds.map((rect) => rect.right - canvasBounds.left));
+    const minTop = Math.min(...bounds.map((rect) => rect.top - canvasBounds.top));
+    const centerX = (minLeft + maxRight) / 2;
+
+    return {
+      x: centerX,
+      y: Math.max(18, minTop - 52)
+    };
+  }, [isCanvasInteracting, selectedBlockIds, selectedCount, selectedSymbolIds, selectedTextBoxIds, selectionRect, state.blocks, state.symbols, state.textBoxes]);
 
   useEffect(() => {
     setIsHydrated(true);
@@ -2133,18 +2160,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
               ))}
             </div>
 
-            {selectedCount > 1 ? (
-              <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
-                <span className="selected-block-label">{selectedCount} éléments sélectionnés</span>
-                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={alignSelectedItems}>
-                  Aligner
-                </button>
-                <button type="button" className="chip-button" onMouseDown={(event) => event.preventDefault()} onClick={removeSelectedItems}>
-                  Supprimer
-                </button>
-              </div>
-            ) : null}
-
             {selectedBlock ? (
               <div className="editor-local-toolbar-group editor-local-toolbar-group-block">
                 <span className="selected-block-label">{getBlockTitle(selectedBlock)}</span>
@@ -2421,6 +2436,38 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
               </article>
             ))}
 
+            {multiSelectionMenuPosition ? (
+              <div
+                className="canvas-quick-menu canvas-selection-menu"
+                style={{ left: `${multiSelectionMenuPosition.x}px`, top: `${multiSelectionMenuPosition.y}px` }}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="canvas-quick-action canvas-selection-action"
+                  aria-label="Aligner"
+                  title="Aligner"
+                  onClick={alignSelectedItems}
+                >
+                  <span className="align-grid-icon" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="canvas-quick-action canvas-selection-action"
+                  aria-label="Supprimer"
+                  title="Supprimer"
+                  onClick={removeSelectedItems}
+                >
+                  ×
+                </button>
+              </div>
+            ) : null}
+
             {canvasQuickMenu ? (
               <>
                 <div
@@ -2433,6 +2480,15 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   style={{ left: `${canvasQuickMenu.x}px`, top: `${canvasQuickMenu.y}px` }}
                   onMouseDown={(event) => event.stopPropagation()}
                 >
+                  <button
+                    type="button"
+                    className="canvas-quick-close"
+                    aria-label="Fermer le menu"
+                    title="Fermer"
+                    onClick={() => setCanvasQuickMenu(null)}
+                  >
+                    ×
+                  </button>
                   <button type="button" className="canvas-quick-action" onClick={() => createTextBoxAt(canvasQuickMenu.clickX, canvasQuickMenu.clickY)}>
                     T
                   </button>
