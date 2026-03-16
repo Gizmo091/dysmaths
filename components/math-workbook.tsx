@@ -1828,7 +1828,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     setCanvasQuickMenu(null);
   }
 
-  function getFirstAvailableTextBoxPosition() {
+  function getFirstAvailableCanvasObjectPosition(targetWidth: number, targetHeight: number, snapOffsetY = 0) {
     const canvas = canvasRef.current;
     const bounds = canvas?.getBoundingClientRect();
     const canvasWidth = bounds?.width ?? 720;
@@ -1838,7 +1838,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     const lineStep = metrics.snapYStep;
     const originX = metrics.originX;
     const originY = metrics.originY;
-    const targetHeight = 28;
     const clearance = 12;
     const occupiedBottoms = [
       ...state.blocks.map((block) => {
@@ -1865,17 +1864,21 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     const snappedLine = metrics.snapY
       ? originY + Math.ceil((Math.max(originY, lowestBottom + clearance) - originY) / lineStep) * lineStep
       : Math.max(originY, lowestBottom + clearance + targetHeight);
-    const snappedTop = metrics.snapY ? snappedLine - targetHeight - metrics.baselineOffset : snappedLine - targetHeight;
+    const snappedTop = metrics.snapY ? snappedLine - targetHeight - metrics.baselineOffset + snapOffsetY : snappedLine - targetHeight;
 
     return {
-      x: Math.max(18, Math.min(canvasWidth - 120, Math.round(originX))),
-      y: Math.max(18, Math.min(canvasHeight - 48, Math.round(snappedTop)))
+      x: Math.max(18, Math.min(canvasWidth - targetWidth, Math.round(originX))),
+      y: Math.max(18, Math.min(canvasHeight - targetHeight, Math.round(snappedTop)))
     };
+  }
+
+  function getFirstAvailableTextBoxPosition() {
+    return getFirstAvailableCanvasObjectPosition(120, 28, FLOATING_TEXTBOX_Y_OFFSET);
   }
 
   function createToolbarTextBox() {
     const position = getFirstAvailableTextBoxPosition();
-    const textBox = createFloatingTextBox(position.x, position.y + FLOATING_TEXTBOX_Y_OFFSET);
+    const textBox = createFloatingTextBox(position.x, position.y);
     beginTransientHistorySession("edit");
 
     setState((current) => ({
@@ -2083,7 +2086,9 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
   }
 
   function openInsertModal(type: StructuredTool) {
-    const block = createBlock(type);
+    const estimatedHeight = type === "division" ? 92 : type === "fraction" ? 72 : 64;
+    const position = getFirstAvailableCanvasObjectPosition(getDefaultWidth(type), estimatedHeight);
+    const block = { ...createBlock(type), x: position.x, y: position.y };
     beginTransientHistorySession("edit");
 
     setState((current) => ({
@@ -3454,6 +3459,28 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }
   }
 
+  function createToolbarShortcutSymbol(shortcutId: string) {
+    const shortcut = findShortcutById(shortcutId);
+
+    if (!shortcut) {
+      return;
+    }
+
+    const defaultFontSize = getDefaultCanvasFontSize(state.sheetStyle);
+    const estimatedWidth = Math.max(36, Math.round(shortcut.content.trim().length * defaultFontSize * 14));
+    const estimatedHeight = Math.max(30, Math.round(defaultFontSize * 22));
+    const position = getFirstAvailableCanvasObjectPosition(estimatedWidth, estimatedHeight);
+    const symbol = createFloatingSymbol(shortcut, position.x, position.y);
+    beginTransientHistorySession("edit");
+
+    setState((current) => ({
+      ...current,
+      symbols: [...current.symbols, symbol]
+    }));
+    selectSingleSymbol(symbol.id);
+    setCanvasQuickMenu(null);
+  }
+
   return (
     <main className="editor-shell">
       {isToolsPanelOpen ? <button type="button" className="tools-drawer-backdrop" aria-label="Fermer les outils" onClick={() => setIsToolsPanelOpen(false)} /> : null}
@@ -3536,7 +3563,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       return;
                     }
 
-                    insertTextAtCursor(shortcut.content);
+                    createToolbarShortcutSymbol(shortcut.id);
                   }}
                 >
                   {renderShortcutGlyph(shortcut)}
@@ -3562,7 +3589,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       return;
                     }
 
-                    insertTextAtCursor(shortcut.content);
+                    createToolbarShortcutSymbol(shortcut.id);
                   }}
                 >
                   {renderShortcutGlyph(shortcut)}
