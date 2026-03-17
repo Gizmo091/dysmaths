@@ -2301,6 +2301,12 @@ input {
   cursor: crosshair;
 }
 
+.document-canvas-highlight-mode,
+.document-canvas-highlight-mode .canvas-editor,
+.document-canvas-highlight-mode .canvas-draw-layer {
+  cursor: none;
+}
+
 .document-canvas-insert-mode {
   cursor: default;
 }
@@ -2428,8 +2434,6 @@ input {
 
 .canvas-draw-path {
   fill: none;
-  stroke: currentColor;
-  stroke-width: var(--stroke-width, 2.6px);
   stroke-linecap: round;
   stroke-linejoin: round;
   pointer-events: none;
@@ -2441,7 +2445,29 @@ input {
 
 .canvas-draw-path-selected {
   stroke: rgba(217, 119, 69, 0.8);
-  stroke-width: 5.2;
+}
+
+.canvas-insert-cursor-highlighter {
+  display: grid;
+  place-items: center;
+  min-width: auto;
+  min-height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  transform: translate(-50%, -50%);
+}
+
+.canvas-highlighter-cursor-mark {
+  display: block;
+  width: calc(var(--highlight-cursor-size, 10px) * 1.4);
+  height: var(--highlight-cursor-size, 10px);
+  border: 1px solid color-mix(in srgb, currentColor 42%, white);
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
 }
 
 .floating-math-block {

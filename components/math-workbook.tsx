@@ -205,6 +205,7 @@ type FreehandStroke = {
   id: string;
   color: string;
   width: number;
+  opacity: number;
   points: FreehandPoint[];
 };
 
@@ -316,7 +317,7 @@ type SnapGuides = {
   y: number | null;
 };
 
-type AdvancedTool = "select" | "move" | "note" | "draw" | null;
+type AdvancedTool = "select" | "move" | "note" | "draw" | "highlight" | null;
 
 const STORAGE_KEY = "maths-facile-free-layout-v1";
 const FLOATING_TEXTBOX_Y_OFFSET = 10;
@@ -329,6 +330,9 @@ const CANVAS_GRID_TOP_REM = PAPER_LINE_STEP_REM;
 const MAX_SNAP_THRESHOLD_PX = 10;
 const CANVAS_LINE_BASELINE_OFFSET_PX = 5;
 const DEFAULT_ACTIVE_COLOR = "#1f2d3d";
+const DEFAULT_HIGHLIGHT_TOOL_COLOR = "rgb(255 226 92)";
+const HIGHLIGHT_STROKE_OPACITY = 0.4;
+const HIGHLIGHT_STROKE_WIDTH = 10;
 const MM_TO_PX = 96 / 25.4;
 const SEYES_MAJOR_MM = 8;
 const SEYES_MINOR_MM = 2;
@@ -443,11 +447,10 @@ const COLOR_OPTIONS = [
 ] as const;
 
 const HIGHLIGHT_OPTIONS = [
-  { id: "none", label: "Aucun", value: "" },
-  { id: "yellow", label: "Jaune", value: "rgba(255, 226, 92, 0.58)" },
-  { id: "green", label: "Vert", value: "rgba(144, 219, 171, 0.52)" },
-  { id: "blue", label: "Bleu", value: "rgba(160, 208, 255, 0.5)" },
-  { id: "pink", label: "Rose", value: "rgba(255, 184, 210, 0.55)" }
+  { id: "yellow", label: "Jaune", value: "rgb(255 226 92)" },
+  { id: "green", label: "Vert", value: "rgb(144 219 171)" },
+  { id: "blue", label: "Bleu", value: "rgb(160 208 255)" },
+  { id: "pink", label: "Rose", value: "rgb(255 184 210)" }
 ] as const;
 
 const SHEET_STYLE_OPTIONS = [
@@ -909,7 +912,8 @@ function parseStoredState(raw: string): WriterState | null {
           ).map((stroke) => ({
             ...stroke,
             color: typeof stroke.color === "string" ? stroke.color : DEFAULT_ACTIVE_COLOR,
-            width: typeof stroke.width === "number" ? stroke.width : 2.6
+            width: typeof stroke.width === "number" ? stroke.width : 2.6,
+            opacity: typeof (stroke as { opacity?: unknown }).opacity === "number" ? (stroke as { opacity: number }).opacity : 1
           }))
         : []
     };
@@ -1149,6 +1153,22 @@ function toggleStruckCell(struckCells: string[], field: string, cellIndex: numbe
   }
 
   return [...struckCells, key];
+}
+
+function getStrokeStyleForTool(tool: AdvancedTool, activeColor: string, activeHighlightColor: string | null) {
+  if (tool === "highlight") {
+    return {
+      color: activeHighlightColor || DEFAULT_HIGHLIGHT_TOOL_COLOR,
+      width: HIGHLIGHT_STROKE_WIDTH,
+      opacity: HIGHLIGHT_STROKE_OPACITY
+    };
+  }
+
+  return {
+    color: activeColor,
+    width: 2.6,
+    opacity: 1
+  };
 }
 
 function hasArithmeticCarryCells(cells: string[]) {
@@ -1598,6 +1618,11 @@ export function MathWorkbook() {
   const selectedStrokeIdsRef = useRef<string[]>([]);
   const isDrawingStrokeRef = useRef(false);
   const draftStrokeRef = useRef<FreehandPoint[]>([]);
+  const draftStrokeStyleRef = useRef<{ color: string; width: number; opacity: number }>({
+    color: DEFAULT_ACTIVE_COLOR,
+    width: 2.6,
+    opacity: 1
+  });
   const toolbarDragUntilRef = useRef(0);
   const toolbarDragMetaRef = useRef<ToolbarDragMeta | null>(null);
   const advancedToolRef = useRef<AdvancedTool>(null);
@@ -2117,6 +2142,7 @@ export function MathWorkbook() {
     function handleMouseUp() {
       if (isDrawingStrokeRef.current) {
         const points = draftStrokeRef.current;
+        const strokeStyle = draftStrokeStyleRef.current;
 
         isDrawingStrokeRef.current = false;
         draftStrokeRef.current = [];
@@ -2128,7 +2154,7 @@ export function MathWorkbook() {
 
           setState((current) => ({
             ...current,
-            strokes: [...current.strokes, { id: createId("stroke"), color: current.activeColor, width: 2.6, points: normalizedPoints }]
+            strokes: [...current.strokes, { id: createId("stroke"), color: strokeStyle.color, width: strokeStyle.width, opacity: strokeStyle.opacity, points: normalizedPoints }]
           }));
           scheduleTransientHistoryCommit("edit");
         } else {
@@ -2143,7 +2169,12 @@ export function MathWorkbook() {
       if (pendingSelectionRef.current && !pendingSelectionRef.current.started) {
         if (advancedToolRef.current === "note") {
           createAnnotationTextBoxAt(pendingSelectionRef.current.originX, pendingSelectionRef.current.originY);
-        } else if (advancedToolRef.current !== "move" && advancedToolRef.current !== "select") {
+        } else if (
+          advancedToolRef.current !== "move" &&
+          advancedToolRef.current !== "select" &&
+          advancedToolRef.current !== "draw" &&
+          advancedToolRef.current !== "highlight"
+        ) {
           openCanvasQuickMenuAtPoint(pendingSelectionRef.current.originX, pendingSelectionRef.current.originY);
         }
       }
@@ -2712,7 +2743,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
   }
 
   function updateInsertCursorPreview(clientX: number, clientY: number) {
-    if (!pendingInsertTool || !canvasRef.current) {
+    if ((!pendingInsertTool && advancedTool !== "highlight") || !canvasRef.current) {
       return;
     }
 
@@ -2841,6 +2872,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
 
   function beginFreehandDrawing(clientX: number, clientY: number) {
     const point = getCanvasPoint(clientX, clientY);
+    draftStrokeStyleRef.current = getStrokeStyleForTool(advancedToolRef.current, stateRef.current.activeColor, stateRef.current.activeHighlightColor);
     beginTransientHistorySession("edit");
     isDrawingStrokeRef.current = true;
     draftStrokeRef.current = [point];
@@ -3262,6 +3294,18 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     }));
   }
 
+  function activateHighlightTool(highlightColor: string) {
+    const nextHighlight = highlightColor || null;
+
+    setState((current) => ({
+      ...current,
+      activeHighlightColor: nextHighlight
+    }));
+    setPendingInsertTool(null);
+    setAdvancedTool(nextHighlight ? "highlight" : null);
+    setOpenMenu(null);
+  }
+
   function adjustCanvasSize(direction: "down" | "up") {
     if (selectedCount === 0) {
       runCommand("fontSize", direction === "up" ? "5" : "2");
@@ -3493,6 +3537,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     setDraftStroke(null);
     isDrawingStrokeRef.current = false;
     draftStrokeRef.current = [];
+    draftStrokeStyleRef.current = { color: stateRef.current.activeColor, width: 2.6, opacity: 1 };
     clearFloatingSelection();
   }
 
@@ -5310,34 +5355,31 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
               <div className="toolbar-highlight-shell">
                 <button
                   type="button"
-                  className={`chip-button toolbar-highlight-button ${openMenu === "highlight" ? "toolbar-highlight-button-active" : ""}`}
-                  aria-label="Surligné"
-                  title="Surligné"
+                  className={`chip-button toolbar-highlight-button ${openMenu === "highlight" || advancedTool === "highlight" ? "toolbar-highlight-button-active" : ""}`}
+                  aria-label="Stabilo"
+                  title="Stabilo"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => toggleMenu("highlight")}
                 >
                   <span className="toolbar-highlight-marker" aria-hidden="true">
                     <span className="toolbar-highlight-marker-tip" />
                     <span className="toolbar-highlight-marker-body" />
-                    <span className="toolbar-highlight-marker-line" style={{ backgroundColor: selectedHighlightColor ?? "rgba(255, 226, 92, 0.92)" }} />
+                    <span className="toolbar-highlight-marker-line" style={{ backgroundColor: selectedHighlightColor ?? DEFAULT_HIGHLIGHT_TOOL_COLOR }} />
                   </span>
                   <span className="toolbar-highlight-caret" aria-hidden="true">▾</span>
                 </button>
 
                 {openMenu === "highlight" ? (
-                  <div className="toolbar-highlight-panel" role="menu" aria-label="Choisir une couleur de surlignage">
+                  <div className="toolbar-highlight-panel" role="menu" aria-label="Choisir une couleur de stabilo">
                     {HIGHLIGHT_OPTIONS.map((option) => (
                       <button
                         key={option.id}
                         type="button"
-                        className={`toolbar-highlight-swatch ${!option.value ? "toolbar-highlight-swatch-clear" : ""} ${(option.value || null) === selectedHighlightColor ? "toolbar-highlight-swatch-active" : ""}`}
+                        className={`toolbar-highlight-swatch ${(option.value || null) === state.activeHighlightColor && advancedTool === "highlight" ? "toolbar-highlight-swatch-active" : ""}`}
                         aria-label={option.label}
                         title={option.label}
                         onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          applyCanvasHighlight(option.value);
-                          setOpenMenu(null);
-                        }}
+                        onClick={() => activateHighlightTool(option.value)}
                       >
                         <span className="toolbar-highlight-swatch-sample" style={option.value ? { backgroundColor: option.value } : undefined} />
                         <span className="toolbar-highlight-swatch-label">{option.label}</span>
@@ -5461,7 +5503,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
           </div>
 
           <div
-            className={`document-canvas document-canvas-${state.sheetStyle} ${isCanvasDropActive ? "document-canvas-drop-active" : ""} ${isCanvasInteracting ? "document-canvas-interacting" : ""} ${advancedTool === "draw" ? "document-canvas-draw-mode" : ""} ${pendingInsertTool ? "document-canvas-insert-mode" : ""} ${advancedTool === "draw" || advancedTool === "select" || advancedTool === "move" || pendingInsertTool ? "document-canvas-touch-locked" : ""}`}
+            className={`document-canvas document-canvas-${state.sheetStyle} ${isCanvasDropActive ? "document-canvas-drop-active" : ""} ${isCanvasInteracting ? "document-canvas-interacting" : ""} ${advancedTool === "draw" || advancedTool === "highlight" ? "document-canvas-draw-mode" : ""} ${advancedTool === "highlight" ? "document-canvas-highlight-mode" : ""} ${pendingInsertTool ? "document-canvas-insert-mode" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "select" || advancedTool === "move" || pendingInsertTool ? "document-canvas-touch-locked" : ""}`}
             style={{ "--canvas-type-size": `${getDefaultCanvasFontSize(state.sheetStyle)}rem` } as ReactCSSProperties}
             ref={canvasRef}
             onDragOver={handleCanvasDragOver}
@@ -5563,13 +5605,26 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
               onPaste={handlePaste}
             />
 
-            {pendingInsertTool && insertCursorPreview.visible ? (
+            {(pendingInsertTool || advancedTool === "highlight") && insertCursorPreview.visible ? (
               <div
-                className="canvas-insert-cursor"
-                style={{ left: `${insertCursorPreview.x}px`, top: `${insertCursorPreview.y}px`, color: state.activeColor }}
+                className={`canvas-insert-cursor ${advancedTool === "highlight" ? "canvas-insert-cursor-highlighter" : ""}`}
+                style={{
+                  left: `${insertCursorPreview.x}px`,
+                  top: `${insertCursorPreview.y}px`,
+                  color: pendingInsertTool ? state.activeColor : state.activeHighlightColor || DEFAULT_HIGHLIGHT_TOOL_COLOR,
+                  ["--highlight-cursor-size" as string]: `${HIGHLIGHT_STROKE_WIDTH}px`
+                } as ReactCSSProperties}
                 aria-hidden="true"
               >
-                {pendingInsertTool.kind === "text" ? "T" : pendingInsertTool.kind === "structured" ? renderStructuredToolGlyph(pendingInsertTool.toolId) : renderShortcutGlyph(findShortcutById(pendingInsertTool.shortcutId) ?? { id: pendingInsertTool.shortcutId, label: "?" })}
+                {advancedTool === "highlight" ? (
+                  <span className="canvas-highlighter-cursor-mark" />
+                ) : pendingInsertTool?.kind === "text" ? (
+                  "T"
+                ) : pendingInsertTool?.kind === "structured" ? (
+                  renderStructuredToolGlyph(pendingInsertTool.toolId)
+                ) : pendingInsertTool?.kind === "shortcut" ? (
+                  renderShortcutGlyph(findShortcutById(pendingInsertTool.shortcutId) ?? { id: pendingInsertTool.shortcutId, label: "?" })
+                ) : null}
               </div>
             ) : null}
 
@@ -5745,11 +5800,21 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             ))}
 
             <svg
-              className={`canvas-draw-layer ${advancedTool === "draw" ? "canvas-draw-layer-active" : ""}`}
+              className={`canvas-draw-layer ${advancedTool === "draw" || advancedTool === "highlight" ? "canvas-draw-layer-active" : ""}`}
               width="100%"
               height="100%"
+              onMouseMove={(event) => {
+                if (advancedTool === "highlight") {
+                  updateInsertCursorPreview(event.clientX, event.clientY);
+                }
+              }}
+              onMouseLeave={() => {
+                if (advancedTool === "highlight") {
+                  hideInsertCursorPreview();
+                }
+              }}
               onMouseDown={(event) => {
-                if (advancedTool !== "draw") {
+                if (advancedTool !== "draw" && advancedTool !== "highlight") {
                   return;
                 }
 
@@ -5767,7 +5832,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                 beginFreehandDrawing(event.clientX, event.clientY);
               }}
               onTouchStart={(event) => {
-                if (advancedTool !== "draw" || event.touches.length === 0) {
+                if ((advancedTool !== "draw" && advancedTool !== "highlight") || event.touches.length === 0) {
                   return;
                 }
 
@@ -5796,27 +5861,35 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       strokeNodeRefs.current[stroke.id] = node;
                     }}
                     className={`canvas-draw-stroke-group ${selectedStrokeIds.includes(stroke.id) ? "canvas-draw-stroke-group-selected" : ""}`}
-                    style={{ "--stroke-width": `${stroke.width}px` } as ReactCSSProperties}
                     onMouseDown={(event) => {
-                      if (advancedTool === "draw") {
+                      if (advancedTool === "draw" || advancedTool === "highlight") {
                         return;
                       }
 
                       startDragging("stroke", stroke.id, strokeBounds.x, strokeBounds.y, event);
                     }}
                     onTouchStart={(event) => {
-                      handleTouchDragStart("stroke", stroke.id, strokeBounds.x, strokeBounds.y, event, advancedTool === "draw");
+                      handleTouchDragStart("stroke", stroke.id, strokeBounds.x, strokeBounds.y, event, advancedTool === "draw" || advancedTool === "highlight");
                     }}
                   >
                     <path className="canvas-draw-hit" d={createStrokePath(stroke.points)} fill="none" />
-                    <path className="canvas-draw-path" d={createStrokePath(stroke.points)} fill="none" stroke={stroke.color} />
+                    <path className="canvas-draw-path" d={createStrokePath(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeOpacity={stroke.opacity} />
                     {selectedStrokeIds.includes(stroke.id) ? (
-                      <path className="canvas-draw-path canvas-draw-path-selected" d={createStrokePath(stroke.points)} fill="none" stroke="rgba(217, 119, 69, 0.8)" />
+                      <path className="canvas-draw-path canvas-draw-path-selected" d={createStrokePath(stroke.points)} fill="none" stroke="rgba(217, 119, 69, 0.8)" strokeWidth={5.2} />
                     ) : null}
                   </g>
                 );
               })}
-              {draftStroke && draftStroke.length >= 2 ? <path className="canvas-draw-path canvas-draw-path-draft" d={createStrokePath(draftStroke)} fill="none" stroke={state.activeColor} /> : null}
+              {draftStroke && draftStroke.length >= 2 ? (
+                <path
+                  className="canvas-draw-path canvas-draw-path-draft"
+                  d={createStrokePath(draftStroke)}
+                  fill="none"
+                  stroke={draftStrokeStyleRef.current.color}
+                  strokeWidth={draftStrokeStyleRef.current.width}
+                  strokeOpacity={draftStrokeStyleRef.current.opacity}
+                />
+              ) : null}
             </svg>
 
             {snapGuides.x !== null ? (
