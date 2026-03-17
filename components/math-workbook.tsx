@@ -1788,6 +1788,42 @@ export function MathWorkbook() {
   }, [editingBlock]);
 
   useEffect(() => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (isEditableKeyboardTarget(event.target)) {
+        return;
+      }
+
+      const isModifierPressed = event.metaKey || event.ctrlKey;
+
+      if (isModifierPressed && event.key.toLowerCase() === "z" && !event.altKey) {
+        event.preventDefault();
+
+        if (event.shiftKey) {
+          redoHistory();
+          return;
+        }
+
+        undoHistory();
+        return;
+      }
+
+      if (isModifierPressed && event.key.toLowerCase() === "y" && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        redoHistory();
+        return;
+      }
+
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedCount > 0) {
+        event.preventDefault();
+        handleHeaderDelete();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [selectedCount, historyPast.length, historyFuture.length, selectedBlock, selectedSymbol, selectedTextBox, selectedStroke]);
+
+  useEffect(() => {
     if (pendingInsertTool) {
       setAdvancedTool(null);
       setCanvasQuickMenu(null);
@@ -2989,6 +3025,15 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
   function handlePaste(event: ReactClipboardEvent<HTMLDivElement>) {
     event.preventDefault();
     insertTextAtCursor(event.clipboardData.getData("text/plain"));
+  }
+
+  function isEditableKeyboardTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    const tagName = target.tagName;
+    return target.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
   }
 
   function openInsertModal(type: StructuredTool) {
@@ -5147,34 +5192,9 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
 
       <header className={`top-toolbar ${isToolsPanelOpen ? "top-toolbar-open" : ""}`}>
         <div className="top-toolbar-inner">
-          <div className="toolbar-row toolbar-row-primary sidebar-block sidebar-block-compact">
-            <p className="sidebar-block-label">Document</p>
-            <div className="toolbar-icon-actions">
-              <button
-                type="button"
-                className="toolbar-icon-button toolbar-icon-button-text"
-                aria-label="Nouveau document"
-                title="Nouveau"
-                onClick={resetDocument}
-              >
-                Nouveau
-              </button>
-            </div>
-          </div>
-
           <div className="toolbar-row toolbar-row-secondary sidebar-block">
-            <p className="sidebar-block-label">Créer</p>
+            <p className="sidebar-block-label">Opérations posées</p>
             <div className="toolbar-shortcut-group" aria-label="Outils d'insertion">
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${pendingInsertTool?.kind === "text" ? "toolbar-shortcut-active" : ""}`}
-                aria-label="Texte"
-                title="Ajouter une zone de texte"
-                aria-pressed={pendingInsertTool?.kind === "text"}
-                onClick={() => togglePendingInsertTool({ kind: "text" })}
-              >
-                T
-              </button>
               {activeStructuredTools.map((tool) => (
                 <button
                   key={tool.id}
@@ -5197,20 +5217,12 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   {renderStructuredToolGlyph(tool.id)}
                 </button>
               ))}
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "draw" ? "toolbar-shortcut-active" : ""}`}
-                title="Dessin libre"
-                onClick={() => toggleAdvancedToolMode("draw")}
-              >
-                ✎
-              </button>
             </div>
           </div>
 
           <div className="toolbar-row toolbar-row-secondary sidebar-block">
-            <p className="sidebar-block-label">Maths courants</p>
-            <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis maths courants">
+            <p className="sidebar-block-label">Symboles courants</p>
+            <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis symboles courants">
               {commonInlineShortcuts.map((shortcut) => (
                 <button
                   key={shortcut.id}
@@ -5264,6 +5276,21 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
 
           <div className="toolbar-row toolbar-row-format sidebar-block" aria-label="Mise en forme">
             <p className="sidebar-block-label">Mise en forme</p>
+            <div className="editor-local-toolbar-group">
+              {COLOR_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`color-chip ${state.activeColor === option.value ? "color-chip-active" : ""}`}
+                  style={{ backgroundColor: option.value, color: option.value }}
+                  aria-label={option.label}
+                  title={option.label}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyActiveColor(option.value)}
+                />
+              ))}
+            </div>
+
             <div className="editor-local-toolbar-group">
               <button type="button" className="chip-button chip-button-compact" aria-label="Gras" title="Gras" onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasBold}>
                 B
@@ -5321,22 +5348,35 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
               </div>
             </div>
 
-            <div className="editor-local-toolbar-group">
-              {COLOR_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`color-chip ${state.activeColor === option.value ? "color-chip-active" : ""}`}
-                  style={{ backgroundColor: option.value, color: option.value }}
-                  aria-label={option.label}
-                  title={option.label}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => applyActiveColor(option.value)}
-                />
-              ))}
-            </div>
-
             <div className="editor-local-toolbar-group toolbar-advanced-group" aria-label="Outils avancés">
+              <button
+                type="button"
+                className={`toolbar-shortcut toolbar-shortcut-symbol ${pendingInsertTool?.kind === "text" ? "toolbar-shortcut-active" : ""}`}
+                aria-label="Texte"
+                title="Ajouter une zone de texte"
+                aria-pressed={pendingInsertTool?.kind === "text"}
+                onClick={() => togglePendingInsertTool({ kind: "text" })}
+              >
+                T
+              </button>
+              <button
+                type="button"
+                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "note" ? "toolbar-shortcut-active" : ""}`}
+                title="Petit texte"
+                onClick={() => toggleAdvancedToolMode("note")}
+              >
+                t
+              </button>
+              <button
+                type="button"
+                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "draw" ? "toolbar-shortcut-active" : ""}`}
+                title="Dessin libre"
+                aria-label="Dessin libre"
+                aria-pressed={advancedTool === "draw"}
+                onClick={() => toggleAdvancedToolMode("draw")}
+              >
+                ✎
+              </button>
               <button
                 type="button"
                 className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "select" ? "sheet-tool-button-active" : ""}`}
@@ -5346,23 +5386,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                 onClick={() => toggleAdvancedToolMode("select")}
               >
                 <span className="selection-icon" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "move" ? "toolbar-shortcut-move-active" : ""}`}
-                title="Déplacer"
-                aria-label="Déplacer"
-                onClick={() => toggleAdvancedToolMode("move")}
-              >
-                {"✋\uFE0E"}
-              </button>
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "note" ? "toolbar-shortcut-active" : ""}`}
-                title="Petit texte"
-                onClick={() => toggleAdvancedToolMode("note")}
-              >
-                Aa
               </button>
               {selectedCount > 0 ? (
                 <button
@@ -5402,6 +5425,9 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             </button>
             <button type="button" className="toolbar-action ghost" onClick={() => window.print()}>
               Imprimer
+            </button>
+            <button type="button" className="toolbar-action ghost" onClick={resetDocument}>
+              Nouveau
             </button>
           </div>
         </div>
