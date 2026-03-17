@@ -19,7 +19,7 @@ import { toBlob, toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 
 type StudyMode = "college" | "lycee";
-type SheetStyle = "seyes" | "large-grid" | "small-grid" | "blank";
+type SheetStyle = "seyes" | "large-grid" | "small-grid" | "lined" | "blank";
 type StructuredTool = "fraction" | "addition" | "subtraction" | "multiplication" | "division" | "power" | "root";
 type UtilityMenu = "highlight" | null;
 
@@ -354,6 +354,7 @@ function cmToPx(cm: number) {
 function getDefaultCanvasFontSize(sheetStyle: SheetStyle) {
   switch (sheetStyle) {
     case "seyes":
+    case "lined":
       return 1.02;
     case "small-grid":
       return 0.96;
@@ -462,6 +463,7 @@ const SHEET_STYLE_OPTIONS = [
   { id: "seyes" as const, label: "Lignes Seyes" },
   { id: "large-grid" as const, label: "Grands carreaux" },
   { id: "small-grid" as const, label: "Petits carreaux" },
+  { id: "lined" as const, label: "Feuille lignée" },
   { id: "blank" as const, label: "Feuille blanche" }
 ] as const;
 
@@ -592,6 +594,16 @@ function getSheetMetrics(sheetStyle: SheetStyle, rem: number) {
         originY: seyesMinorStep * 2,
         baselineOffset: CANVAS_LINE_BASELINE_OFFSET_PX,
         snapX: true,
+        snapY: true
+      };
+    case "lined":
+      return {
+        snapXStep: seyesStep / 2,
+        snapYStep: seyesStep,
+        originX: CANVAS_GRID_LEFT_REM * rem,
+        originY: seyesStep,
+        baselineOffset: CANVAS_LINE_BASELINE_OFFSET_PX,
+        snapX: false,
         snapY: true
       };
     case "blank":
@@ -829,6 +841,7 @@ function parseStoredState(raw: string): WriterState | null {
     const parsedSheetStyle =
       (parsed as { sheetStyle?: unknown }).sheetStyle === "large-grid" ||
       (parsed as { sheetStyle?: unknown }).sheetStyle === "small-grid" ||
+      (parsed as { sheetStyle?: unknown }).sheetStyle === "lined" ||
       (parsed as { sheetStyle?: unknown }).sheetStyle === "blank" ||
       (parsed as { sheetStyle?: unknown }).sheetStyle === "seyes"
         ? (parsed as { sheetStyle: SheetStyle }).sheetStyle
@@ -1923,7 +1936,7 @@ export function MathWorkbook() {
   }, [selectedBlockIds, selectedStrokeIds, selectedSymbolIds, selectedTextBoxIds]);
 
   useEffect(() => {
-    if (!pendingFocusTextBoxIdRef.current) {
+    if (!pendingFocusTextBoxIdRef.current || editingTextBoxId !== pendingFocusTextBoxIdRef.current) {
       return;
     }
 
@@ -1934,8 +1947,10 @@ export function MathWorkbook() {
     }
 
     node.focus();
+    const cursorPosition = node.value.length;
+    node.setSelectionRange(cursorPosition, cursorPosition);
     pendingFocusTextBoxIdRef.current = null;
-  }, [state.textBoxes]);
+  }, [editingTextBoxId, state.textBoxes]);
 
   useEffect(() => {
     if (!editingBlock) {
@@ -5001,6 +5016,17 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     };
 
     if (sheetStyle === "blank") {
+      return overlay;
+    }
+
+    if (sheetStyle === "lined") {
+      const lineStep = mmToPx(SEYES_MAJOR_MM);
+
+      for (let y = lineStep; y < height; y += lineStep) {
+        const snappedY = Math.round(y) + 0.5;
+        addLine(0, snappedY, width, snappedY, "rgba(174, 204, 231, 0.74)");
+      }
+
       return overlay;
     }
 

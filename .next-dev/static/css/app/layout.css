@@ -2464,6 +2464,11 @@ input {
   background: repeating-linear-gradient(90deg, rgba(187, 209, 235, 0.62) 0, rgba(187, 209, 235, 0.62) 1px, transparent 1px, transparent 4mm);
 }
 
+.document-canvas-lined {
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(180deg, transparent 0, transparent calc(8mm - 1px), rgba(174, 204, 231, 0.74) calc(8mm - 1px), rgba(174, 204, 231, 0.74) 8mm);
+}
+
 .document-canvas-blank {
   background: var(--paper);
 }
