@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  --surface: rgba(255, 251, 244, 0.88);
+  --surface: rgba(255, 248, 238, 0.9);
   --paper: #fffdf9;
   --paper-line: rgba(187, 209, 235, 0.85);
   --paper-margin: rgba(235, 146, 82, 0.45);
@@ -28,9 +28,9 @@
 html {
   min-height: 100%;
   background:
-    radial-gradient(circle at top left, rgba(255, 213, 166, 0.9), transparent 28%),
-    radial-gradient(circle at top right, rgba(214, 233, 248, 0.75), transparent 24%),
-    linear-gradient(180deg, #fcf8f1 0%, #efe4d2 100%);
+    radial-gradient(circle at top left, rgba(232, 173, 104, 0.5), transparent 30%),
+    radial-gradient(circle at 84% 12%, rgba(178, 203, 188, 0.4), transparent 24%),
+    linear-gradient(180deg, #f7eedf 0%, #e7d3b2 100%);
 }
 
 body {
@@ -52,6 +52,18 @@ button {
 :where(button, input, .rich-text-block):focus-visible {
   outline: 3px solid rgba(217, 119, 69, 0.38);
   outline-offset: 3px;
+}
+
+@keyframes division-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .editor-shell {
@@ -912,6 +924,7 @@ input {
 }
 
 .fraction-layout,
+.addition-layout,
 .power-layout,
 .root-layout {
   display: grid;
@@ -964,6 +977,97 @@ input {
   height: 3px;
   background: currentColor;
   border-radius: 999px;
+}
+
+.addition-preview {
+  display: inline-grid;
+  gap: 0.28rem;
+}
+
+.addition-layout {
+  --division-cell-size: 1.75rem;
+  --division-cell-gap: 0.3rem;
+}
+
+.addition-line {
+  display: grid;
+  grid-template-columns: 1rem max-content;
+  align-items: center;
+  column-gap: 0.32rem;
+}
+
+.addition-sign {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.addition-sign-spacer {
+  opacity: 0;
+}
+
+.addition-row {
+  min-width: 100%;
+}
+
+.addition-row-operation {
+  border-bottom: 3px solid currentColor;
+  padding-bottom: 0.24rem;
+}
+
+.addition-row-button {
+  display: block;
+  width: max-content;
+}
+
+.addition-number-field {
+  position: relative;
+  width: calc((var(--division-columns) * var(--division-cell-size)) + ((var(--division-columns) - 1) * var(--division-cell-gap)));
+}
+
+.addition-number-display {
+  min-width: 100%;
+  pointer-events: none;
+}
+
+.addition-number-field-active .division-cell {
+  border-color: color-mix(in srgb, currentColor 88%, white);
+  background: rgba(255, 235, 214, 0.96);
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 20%, white);
+}
+
+.addition-number-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: calc((var(--division-columns) * var(--division-cell-size)) + ((var(--division-columns) - 1) * var(--division-cell-gap)));
+  height: var(--division-cell-size);
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: transparent;
+  font-family: "Aptos Mono", "Consolas", "Courier New", monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: left;
+  letter-spacing: 0;
+  caret-color: currentColor;
+  -webkit-text-fill-color: transparent;
+}
+
+.addition-number-input:focus {
+  outline: none;
+}
+
+.addition-number-input::selection {
+  background: transparent;
+  color: transparent;
 }
 
 .division-layout {
@@ -1055,6 +1159,7 @@ input {
 }
 
 .division-cell {
+  position: relative;
   display: grid;
   place-items: center;
   width: var(--division-cell-size);
@@ -1065,6 +1170,25 @@ input {
   font-size: 0.95em;
   line-height: 1;
   font-weight: 600;
+}
+
+.division-cell-target {
+  border-color: color-mix(in srgb, currentColor 92%, white);
+  background: rgba(255, 235, 214, 0.98);
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 24%, white);
+}
+
+.division-cell-target::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  width: 2px;
+  height: 64%;
+  background: currentColor;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  animation: division-caret-blink 1s steps(1, end) infinite;
 }
 
 .division-cell-input {
@@ -1089,6 +1213,8 @@ input {
 }
 
 .division-cell-input-active {
+  border-color: color-mix(in srgb, currentColor 88%, white);
+  background: rgba(255, 235, 214, 0.96);
   box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 22%, white);
 }
 
@@ -1118,10 +1244,16 @@ input {
   text-align: left;
   letter-spacing: 0;
   caret-color: currentColor;
+  -webkit-text-fill-color: transparent;
 }
 
 .division-quotient-field:focus {
   outline: none;
+}
+
+.division-quotient-field::selection {
+  background: transparent;
+  color: transparent;
 }
 
 .division-quotient-field-active {
@@ -1152,10 +1284,16 @@ input {
   text-align: left;
   letter-spacing: 0;
   caret-color: currentColor;
+  -webkit-text-fill-color: transparent;
 }
 
 .division-divisor-field:focus {
   outline: none;
+}
+
+.division-divisor-field::selection {
+  background: transparent;
+  color: transparent;
 }
 
 .division-dividend,
@@ -1174,6 +1312,8 @@ input {
 }
 
 .division-number-field-active .division-cell {
+  border-color: color-mix(in srgb, currentColor 88%, white);
+  background: rgba(255, 235, 214, 0.96);
   box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 20%, white);
 }
 
@@ -1195,10 +1335,16 @@ input {
   text-align: left;
   letter-spacing: 0;
   caret-color: currentColor;
+  -webkit-text-fill-color: transparent;
 }
 
 .division-dividend-field:focus {
   outline: none;
+}
+
+.division-dividend-field::selection {
+  background: transparent;
+  color: transparent;
 }
 
 .division-workpad-editor {
@@ -1963,7 +2109,7 @@ input {
 
 .floating-math-block-selected {
   border-color: rgba(217, 119, 69, 0.44);
-  background: rgba(255, 249, 241, 0.92);
+  background: rgba(255, 239, 221, 0.9);
 }
 
 .floating-math-block:active {
@@ -1987,7 +2133,7 @@ input {
 
 .floating-math-symbol-selected {
   border-color: rgba(217, 119, 69, 0.44);
-  background: rgba(255, 249, 241, 0.92);
+  background: rgba(255, 239, 221, 0.9);
 }
 
 .floating-math-symbol:active {
@@ -2013,7 +2159,7 @@ input {
 
 .floating-text-box-selected {
   outline: 1px dashed rgba(217, 119, 69, 0.44);
-  background: rgba(255, 249, 241, 0.92);
+  background: rgba(255, 239, 221, 0.9);
 }
 
 .floating-text-box:active {

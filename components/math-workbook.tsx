@@ -20,7 +20,7 @@ import { jsPDF } from "jspdf";
 
 type StudyMode = "college" | "lycee";
 type SheetStyle = "seyes" | "large-grid" | "small-grid" | "blank";
-type StructuredTool = "fraction" | "division" | "power" | "root";
+type StructuredTool = "fraction" | "addition" | "division" | "power" | "root";
 type UtilityMenu = "highlight" | null;
 
 type FractionBlock = {
@@ -51,6 +51,24 @@ type DivisionBlock = {
   quotient: string;
   remainder: string;
   work: string;
+  caption: string;
+  color: string;
+  fontSize: number;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
+  underline: boolean;
+  highlightColor: string | null;
+  x: number;
+  y: number;
+  width: number;
+};
+
+type AdditionBlock = {
+  id: string;
+  type: "addition";
+  top: string;
+  bottom: string;
+  result: string;
   caption: string;
   color: string;
   fontSize: number;
@@ -141,7 +159,7 @@ type FreehandStroke = {
   points: FreehandPoint[];
 };
 
-type MathBlock = FractionBlock | DivisionBlock | PowerBlock | RootBlock;
+type MathBlock = FractionBlock | AdditionBlock | DivisionBlock | PowerBlock | RootBlock;
 
 type WriterState = {
   title: string;
@@ -380,6 +398,7 @@ const SHEET_STYLE_OPTIONS = [
 
 const STRUCTURED_TOOLS = [
   { id: "fraction" as const, label: "Fraction posée", hint: "Numérateur au-dessus, dénominateur en dessous", modes: ["college", "lycee"] as StudyMode[] },
+  { id: "addition" as const, label: "Addition posée", hint: "Deux termes alignés et un résultat", modes: ["college", "lycee"] as StudyMode[] },
   { id: "division" as const, label: "Division posée", hint: "Diviseur, dividende, quotient et reste", modes: ["college", "lycee"] as StudyMode[] },
   { id: "power" as const, label: "Puissance", hint: "Base, exposant et résultat", modes: ["college", "lycee"] as StudyMode[] },
   { id: "root" as const, label: "Racine", hint: "Radicande et résultat", modes: ["college", "lycee"] as StudyMode[] }
@@ -798,6 +817,8 @@ function getBlockTitle(block: MathBlock) {
   switch (block.type) {
     case "fraction":
       return "Fraction posée";
+    case "addition":
+      return "Addition posée";
     case "division":
       return "Division posée";
     case "power":
@@ -811,6 +832,8 @@ function getBlockTitle(block: MathBlock) {
 
 function getDefaultWidth(type: MathBlock["type"]) {
   switch (type) {
+    case "addition":
+      return 250;
     case "division":
       return 320;
     case "fraction":
@@ -911,14 +934,31 @@ function getDivisionQuotientColumns(block: DivisionBlock) {
   return Math.max(1, block.quotient.trim().length);
 }
 
-function renderDivisionCellRow(value: string, columns: number, className: string) {
+function getAdditionColumns(block: AdditionBlock) {
+  return Math.max(3, block.top.trim().length, block.bottom.trim().length, block.result.trim().length);
+}
+
+function getAlignedCaretCellIndex(value: string, columns: number, align: "start" | "end", caretPosition: number) {
   const characters = Array.from(value);
+  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
+  return Math.max(0, Math.min(columns - 1, offset + caretPosition));
+}
+
+function renderDivisionCellRow(
+  value: string,
+  columns: number,
+  className: string,
+  align: "start" | "end" = "start",
+  targetCellIndex?: number
+) {
+  const characters = Array.from(value);
+  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
 
   return (
     <div className={`division-cell-row ${className}`} style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}>
       {Array.from({ length: columns }).map((_, index) => (
-        <span key={index} className="division-cell">
-          {characters[index] ?? ""}
+        <span key={index} className={`division-cell ${targetCellIndex === index ? "division-cell-target" : ""}`}>
+          {characters[index - offset] ?? ""}
         </span>
       ))}
     </div>
@@ -933,6 +973,29 @@ function renderMathPreview(block: MathBlock) {
           <div className="fraction-line top">{block.numerator || "numérateur"}</div>
           <div className="fraction-bar" />
           <div className="fraction-line">{block.denominator || "dénominateur"}</div>
+        </div>
+        {block.caption ? <p className="math-caption">{block.caption}</p> : null}
+      </div>
+    );
+  }
+
+  if (block.type === "addition") {
+    const columns = getAdditionColumns(block);
+    return (
+      <div className="math-layout addition-layout">
+        <div className="addition-preview">
+          <div className="addition-line">
+            <span className="addition-sign addition-sign-spacer" aria-hidden="true">+</span>
+            {renderDivisionCellRow(block.top, columns, "addition-row", "end")}
+          </div>
+          <div className="addition-line">
+            <span className="addition-sign">+</span>
+            {renderDivisionCellRow(block.bottom, columns, "addition-row addition-row-operation", "end")}
+          </div>
+          <div className="addition-line">
+            <span className="addition-sign addition-sign-spacer" aria-hidden="true">+</span>
+            {renderDivisionCellRow(block.result, columns, "addition-row addition-row-result", "end")}
+          </div>
         </div>
         {block.caption ? <p className="math-caption">{block.caption}</p> : null}
       </div>
@@ -1001,6 +1064,8 @@ function getInlineStartField(type: StructuredTool) {
   switch (type) {
     case "fraction":
       return "numerator";
+    case "addition":
+      return "top";
     case "division":
       return "dividend";
     case "power":
@@ -1016,6 +1081,8 @@ function getInlineFieldSequence(type: StructuredTool) {
   switch (type) {
     case "fraction":
       return ["numerator", "denominator"];
+    case "addition":
+      return ["top", "bottom", "result"];
     case "division":
       return ["dividend", "divisor", "quotient", "work"];
     case "power":
@@ -1044,6 +1111,10 @@ function isBlockEmpty(block: MathBlock) {
     return !block.numerator.trim() && !block.denominator.trim();
   }
 
+  if (block.type === "addition") {
+    return !block.top.trim() && !block.bottom.trim() && !block.result.trim();
+  }
+
   if (block.type === "division") {
     return !block.work.trim() && !block.dividend.trim() && !block.divisor.trim() && !block.quotient.trim() && !block.remainder.trim();
   }
@@ -1068,6 +1139,7 @@ export function MathWorkbook() {
   const [selectedStrokeIds, setSelectedStrokeIds] = useState<string[]>([]);
   const [editingTextBoxId, setEditingTextBoxId] = useState<string | null>(null);
   const [editingBlock, setEditingBlock] = useState<EditingBlockState>(null);
+  const [numericFieldCaretPositions, setNumericFieldCaretPositions] = useState<Record<string, number>>({});
   const [advancedTool, setAdvancedTool] = useState<AdvancedTool>(null);
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
   const [draftStroke, setDraftStroke] = useState<FreehandPoint[] | null>(null);
@@ -1590,6 +1662,24 @@ export function MathWorkbook() {
         highlightColor: null,
         numeratorStrike: false,
         denominatorStrike: false,
+        ...position
+      } satisfies MathBlock;
+    }
+
+    if (type === "addition") {
+      return {
+        id: createId("addition"),
+        type,
+        top: "",
+        bottom: "",
+        result: "",
+        caption: "",
+        color: state.activeColor,
+        fontSize: defaultFontSize,
+        fontWeight: 500,
+        fontStyle: "normal",
+        underline: false,
+        highlightColor: null,
         ...position
       } satisfies MathBlock;
     }
@@ -2219,7 +2309,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
   }
 
   function openInsertModal(type: StructuredTool) {
-    const estimatedHeight = type === "division" ? 92 : type === "fraction" ? 72 : 64;
+    const estimatedHeight = type === "division" ? 92 : type === "addition" ? 84 : type === "fraction" ? 72 : 64;
     const position = getFirstAvailableCanvasObjectPosition(getDefaultWidth(type), estimatedHeight);
     const block = { ...createBlock(type), x: position.x, y: position.y };
     beginTransientHistorySession("edit");
@@ -2513,6 +2603,17 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
 
     setEditingBlock(null);
     scheduleTransientHistoryCommit("edit");
+  }
+
+  function updateNumericCaretPosition(key: string, nextPosition: number) {
+    setNumericFieldCaretPositions((current) =>
+      current[key] === nextPosition
+        ? current
+        : {
+            ...current,
+            [key]: nextPosition
+          }
+    );
   }
 
   function shouldCloseEditingBlock(target: EventTarget | null) {
@@ -3183,6 +3284,29 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       );
     }
 
+    if (block.type === "addition") {
+      const columns = getAdditionColumns(block);
+      return (
+        <div className="math-layout addition-layout">
+          <div className="addition-preview">
+            <div className="addition-line">
+              <span className="addition-sign addition-sign-spacer" aria-hidden="true">+</span>
+              {renderBlockPreviewButton(block.id, "top", renderDivisionCellRow(block.top, columns, "addition-row", "end"), "addition-row-button")}
+            </div>
+            <div className="addition-line">
+              <span className="addition-sign">+</span>
+              {renderBlockPreviewButton(block.id, "bottom", renderDivisionCellRow(block.bottom, columns, "addition-row addition-row-operation", "end"), "addition-row-button")}
+            </div>
+            <div className="addition-line">
+              <span className="addition-sign addition-sign-spacer" aria-hidden="true">+</span>
+              {renderBlockPreviewButton(block.id, "result", renderDivisionCellRow(block.result, columns, "addition-row addition-row-result", "end"), "addition-row-button")}
+            </div>
+          </div>
+          {block.caption ? <p className="math-caption">{block.caption}</p> : null}
+        </div>
+      );
+    }
+
     if (block.type === "division") {
       const leftColumns = getDivisionLeftColumns(block);
       const divisorColumns = getDivisionDivisorColumns(block);
@@ -3279,6 +3403,73 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             <input {...bindInlineInput("numerator")} value={block.numerator} placeholder="a" className="math-inline-input fraction-inline-input" />
             <div className="fraction-bar" />
             <input {...bindInlineInput("denominator")} value={block.denominator} placeholder="b" className="math-inline-input fraction-inline-input" />
+          </div>
+        </div>
+      );
+    }
+
+    if (block.type === "addition") {
+      const columns = getAdditionColumns(block);
+      const renderAdditionNumericField = (
+        field: "top" | "bottom" | "result",
+        value: string,
+        displayClassName: string
+      ) => {
+        const isActive = currentField === field;
+        const caretKey = `${block.id}:${field}`;
+        const caretPosition = numericFieldCaretPositions[caretKey] ?? Array.from(value).length;
+        const targetCellIndex = getAlignedCaretCellIndex(value, columns, "end", caretPosition);
+        const baseInputProps = bindInlineInput(field);
+
+        return (
+          <div
+            className={`addition-number-field ${isActive ? "addition-number-field-active" : ""}`}
+            style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}
+          >
+            <input
+              {...baseInputProps}
+              value={value}
+              inputMode="decimal"
+              pattern="[0-9,]*"
+              className="addition-number-input"
+              onFocus={(event) => {
+                baseInputProps.onFocus();
+              }}
+              onClick={(event) => {
+                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(value).length);
+              }}
+              onKeyUp={(event) => {
+                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
+              }}
+              onSelect={(event) => {
+                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
+              }}
+              onChange={(event) => {
+                const nextValue = normalizeDivisionDecimalInput(event.target.value);
+                updateInlineBlockField(block.id, field, nextValue);
+                updateNumericCaretPosition(caretKey, event.target.selectionStart ?? Array.from(nextValue).length);
+              }}
+            />
+            {renderDivisionCellRow(value, columns, `${displayClassName} addition-number-display`, "end", isActive ? targetCellIndex : undefined)}
+          </div>
+        );
+      };
+
+      return (
+        <div className="math-layout addition-layout">
+          <div className="addition-preview">
+            <div className="addition-line">
+              <span className="addition-sign addition-sign-spacer" aria-hidden="true">+</span>
+              {renderAdditionNumericField("top", block.top, "addition-row")}
+            </div>
+            <div className="addition-line">
+              <span className="addition-sign">+</span>
+              {renderAdditionNumericField("bottom", block.bottom, "addition-row addition-row-operation")}
+            </div>
+            <div className="addition-line">
+              <span className="addition-sign addition-sign-spacer" aria-hidden="true">+</span>
+              {renderAdditionNumericField("result", block.result, "addition-row addition-row-result")}
+            </div>
           </div>
         </div>
       );
@@ -3445,6 +3636,11 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
         displayClassName: string
       ) => {
         const isActive = currentField === field;
+        const caretKey = `${block.id}:${field}`;
+        const caretPosition = numericFieldCaretPositions[caretKey] ?? Array.from(value).length;
+        const align = field === "dividend" ? "start" : "end";
+        const targetCellIndex = getAlignedCaretCellIndex(value, columns, align, caretPosition);
+        const baseInputProps = bindInlineInput(field);
 
         return (
           <div
@@ -3452,14 +3648,30 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
             style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}
           >
             <input
-              {...bindInlineInput(field)}
+              {...baseInputProps}
               value={value}
               inputMode="decimal"
               pattern="[0-9,]*"
               className={inputClassName}
-              onChange={(event) => updateInlineBlockField(block.id, field, normalizeDivisionDecimalInput(event.target.value))}
+              onFocus={(event) => {
+                baseInputProps.onFocus();
+              }}
+              onClick={(event) => {
+                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(value).length);
+              }}
+              onKeyUp={(event) => {
+                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
+              }}
+              onSelect={(event) => {
+                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
+              }}
+              onChange={(event) => {
+                const nextValue = normalizeDivisionDecimalInput(event.target.value);
+                updateInlineBlockField(block.id, field, nextValue);
+                updateNumericCaretPosition(caretKey, event.target.selectionStart ?? Array.from(nextValue).length);
+              }}
             />
-            {renderDivisionCellRow(value, columns, `${displayClassName} division-number-field-display`)}
+            {renderDivisionCellRow(value, columns, `${displayClassName} division-number-field-display`, align, isActive ? targetCellIndex : undefined)}
           </div>
         );
       };
@@ -3753,6 +3965,29 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       );
     }
 
+    if (block.type === "addition") {
+      return (
+        <div className="math-editor-grid">
+          <label>
+            <span>Premier terme</span>
+            <input value={block.top} onChange={(event) => updateModalField("top", event.target.value)} placeholder="245" />
+          </label>
+          <label>
+            <span>Deuxième terme</span>
+            <input value={block.bottom} onChange={(event) => updateModalField("bottom", event.target.value)} placeholder="37" />
+          </label>
+          <label>
+            <span>Résultat</span>
+            <input value={block.result} onChange={(event) => updateModalField("result", event.target.value)} placeholder="282" />
+          </label>
+          <label className="wide-field">
+            <span>Consigne ou remarque</span>
+            <input value={block.caption} onChange={(event) => updateModalField("caption", event.target.value)} placeholder="Je pose l'addition" />
+          </label>
+        </div>
+      );
+    }
+
     if (block.type === "power") {
       return (
         <div className="math-editor-grid">
@@ -3897,7 +4132,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                     openInsertModal(tool.id);
                   }}
                 >
-                  {tool.id === "fraction" ? "a/b" : tool.id === "division" ? "÷" : tool.id === "power" ? "x²" : "√"}
+                  {tool.id === "fraction" ? "a/b" : tool.id === "addition" ? "+" : tool.id === "division" ? "÷" : tool.id === "power" ? "x²" : "√"}
                 </button>
               ))}
               <button
@@ -4572,7 +4807,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                       title={tool.label}
                       onClick={() => createStructuredToolAt(tool.id, canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
                     >
-                      {tool.id === "fraction" ? "a/b" : tool.id === "division" ? "÷" : tool.id === "power" ? "x²" : "√"}
+                      {tool.id === "fraction" ? "a/b" : tool.id === "addition" ? "+" : tool.id === "division" ? "÷" : tool.id === "power" ? "x²" : "√"}
                     </button>
                   ))}
                   {activeInlineShortcuts
