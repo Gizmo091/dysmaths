@@ -5462,6 +5462,15 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
           </div>
         </div>
 
+        <footer className="sidebar-footer">
+          <p className="sidebar-credit">
+            Conçu par{" "}
+            <a href="https://www.champeau.info" target="_blank" rel="noreferrer">
+              Guillaume Champeau
+            </a>
+          </p>
+        </footer>
+
       </header>
 
       <section className="editor-stage">
