@@ -966,45 +966,10 @@ input {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
-.editor-sheet-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  width: min(100%, var(--a4-width));
-  margin: 0 auto 1rem;
-}
-
-.sheet-head-controls {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
 .editor-sheet h1,
 .export-head h2 {
   margin: 0;
   font-family: var(--font-display);
-}
-
-.sheet-title-input {
-  width: min(100%, 34rem);
-  min-height: 0;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  font-family: var(--font-display);
-  font-size: clamp(1.7rem, 3vw, 2.45rem);
-  font-weight: 800;
-  line-height: 1.16;
-  letter-spacing: -0.025em;
-}
-
-.sheet-title-input::placeholder {
-  color: color-mix(in srgb, var(--ink) 52%, white);
 }
 
 .sheet-style-picker {
@@ -1015,6 +980,22 @@ input {
   color: color-mix(in srgb, var(--ink) 70%, white);
   font-size: 0.8rem;
   font-weight: 800;
+}
+
+.sheet-style-picker-toolbar {
+  align-items: center;
+  gap: 0.18rem;
+}
+
+.sheet-style-picker-toolbar span {
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+.sheet-style-picker-toolbar .sheet-style-select {
+  min-height: 2.3rem;
+  padding: 0.36rem 0.72rem;
+  border-radius: 12px;
 }
 
 .sheet-style-select {

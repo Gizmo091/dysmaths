@@ -2353,7 +2353,7 @@ export function MathWorkbook() {
   const [selectedTextBoxMenuPosition, setSelectedTextBoxMenuPosition] = useState<{ x: number; y: number; placement: "above" | "below" } | null>(null);
   const [selectedGeometryMenuPosition, setSelectedGeometryMenuPosition] = useState<{ x: number; y: number; placement: "above" | "below" } | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [isExporting, setIsExporting] = useState<"pdf" | "png" | null>(null);
+  const [isExporting, setIsExporting] = useState<"pdf" | "png" | "print" | null>(null);
   const [isCanvasDropActive, setIsCanvasDropActive] = useState(false);
   const [selectionRect, setSelectionRect] = useState<SelectionRect>(null);
   const [isCanvasInteracting, setIsCanvasInteracting] = useState(false);
@@ -7022,6 +7022,75 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     }
   }
 
+  async function printSheet() {
+    const exportNode = createExportCanvasNode();
+
+    if (!exportNode) {
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+
+    setIsExporting("print");
+
+    try {
+      const imageUrl = await toPng(exportNode.node, {
+        backgroundColor: "#fffdf8",
+        cacheBust: true,
+        skipFonts: true,
+        pixelRatio: 2
+      });
+
+      if (!printWindow) {
+        return;
+      }
+
+      const safeTitle = state.title || "maths-facile";
+      printWindow.document.title = `${safeTitle} - impression`;
+      printWindow.document.open();
+      printWindow.document.write(`<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>${safeTitle} - impression</title>
+    <style>
+      @page { size: A4 portrait; margin: 0; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: white;
+      }
+      body {
+        display: grid;
+        place-items: start center;
+      }
+      img {
+        display: block;
+        width: 210mm;
+        height: 297mm;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <img src="${imageUrl}" alt="${safeTitle}" />
+    <script>
+      const firePrint = () => {
+        window.focus();
+        window.print();
+      };
+      window.addEventListener('load', () => window.setTimeout(firePrint, 80), { once: true });
+      window.addEventListener('afterprint', () => window.close(), { once: true });
+    </script>
+  </body>
+</html>`);
+      printWindow.document.close();
+    } finally {
+      exportNode.cleanup();
+      setIsExporting(null);
+    }
+  }
+
   function renderModalFields(block: MathBlock) {
     if (block.type === "fraction") {
       return (
@@ -7549,9 +7618,23 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
             <button type="button" className="toolbar-action secondary" onClick={exportPng} disabled={isExporting !== null}>
               {isExporting === "png" ? "Création PNG..." : "PNG"}
             </button>
-            <button type="button" className="toolbar-action ghost" onClick={() => window.print()}>
-              Imprimer
+            <button type="button" className="toolbar-action ghost" onClick={printSheet} disabled={isExporting !== null}>
+              {isExporting === "print" ? "Préparation..." : "Imprimer"}
             </button>
+            <label className="sheet-style-picker sheet-style-picker-toolbar">
+              <select
+                className="sheet-style-select"
+                value={state.sheetStyle}
+                onChange={(event) => setState((current) => ({ ...current, sheetStyle: event.target.value as SheetStyle }))}
+                aria-label="Style de feuille"
+              >
+                {SHEET_STYLE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button type="button" className="toolbar-action ghost" onClick={resetDocument}>
               Nouveau
             </button>
@@ -7559,35 +7642,6 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
         </div>
 
         <div className="editor-sheet">
-          <div className="editor-sheet-head">
-            <div>
-              <input
-                className="sheet-title-input"
-                value={state.title}
-                onChange={(event) => setState((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Document sans titre"
-                aria-label="Titre du document"
-              />
-            </div>
-            <div className="sheet-head-controls">
-              <label className="sheet-style-picker">
-                <span>Style de feuille</span>
-                <select
-                  className="sheet-style-select"
-                  value={state.sheetStyle}
-                  onChange={(event) => setState((current) => ({ ...current, sheetStyle: event.target.value as SheetStyle }))}
-                  aria-label="Style de feuille"
-                >
-                  {SHEET_STYLE_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-
           <div className="document-canvas-viewport">
             <div className="document-canvas-stage">
               <div
@@ -7831,7 +7885,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                     >
                       <circle className="canvas-geometry-hit" cx={x} cy={y} r={GEOMETRY_HIT_RADIUS_PX} />
                       <circle className="canvas-geometry-point" cx={x} cy={y} r={mmToPx(GEOMETRY_POINT_RADIUS_MM)} fill={shape.color} />
-                      {isSelected ? <circle className="canvas-geometry-selection-ring" cx={x} cy={y} r={mmToPx(GEOMETRY_POINT_RADIUS_MM) + 6} /> : null}
+                      {isSelected ? <circle className="canvas-geometry-selection-ring" cx={x} cy={y} r={mmToPx(GEOMETRY_POINT_RADIUS_MM) + 6} fill="none" /> : null}
                       {shape.label ? (
                         <text className="canvas-geometry-label" x={x + 10} y={y - 10} fill={shape.color}>
                           {shape.label}
@@ -7865,10 +7919,10 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                         handleTouchDragStart("geometry", shape.id, bounds.x, bounds.y, event, Boolean(activeGeometryTool));
                       }}
                     >
-                      <circle className="canvas-geometry-hit" cx={cx} cy={cy} r={Math.max(radius + 8, GEOMETRY_HIT_RADIUS_PX)} />
-                      <circle className="canvas-geometry-circle" cx={cx} cy={cy} r={radius} stroke={shape.color} strokeWidth={strokeWidthPx} />
+                      <circle className="canvas-geometry-hit" cx={cx} cy={cy} r={Math.max(radius + 8, GEOMETRY_HIT_RADIUS_PX)} fill="none" />
+                      <circle className="canvas-geometry-circle" cx={cx} cy={cy} r={radius} fill="none" stroke={shape.color} strokeWidth={strokeWidthPx} />
                       <circle className="canvas-geometry-center" cx={cx} cy={cy} r={Math.max(1.2, strokeWidthPx)} fill={shape.color} />
-                      {isSelected ? <circle className="canvas-geometry-selection-ring" cx={cx} cy={cy} r={radius + 6} /> : null}
+                      {isSelected ? <circle className="canvas-geometry-selection-ring" cx={cx} cy={cy} r={radius + 6} fill="none" /> : null}
                       {measurement ? (
                         <text className="canvas-geometry-measure" x={cx} y={cy - radius - 14} textAnchor="middle">
                           {measurement}
