@@ -267,7 +267,6 @@ type WriterState = {
   title: string;
   mode: StudyMode;
   sheetStyle: SheetStyle;
-  zoomPercent: number;
   activeColor: string;
   activeHighlightColor: string | null;
   textHtml: string;
@@ -556,7 +555,6 @@ function createDefaultState(sheetStyle: SheetStyle = "seyes"): WriterState {
     title: "Mon devoir de maths",
     mode: "college",
     sheetStyle,
-    zoomPercent: 100,
     activeColor: DEFAULT_ACTIVE_COLOR,
     activeHighlightColor: "rgba(255, 226, 92, 0.58)",
     textHtml: DEFAULT_TEXT_HTML,
@@ -583,7 +581,6 @@ const HIGHLIGHT_OPTIONS = [
   { id: "pink", label: "Rose", value: "rgb(255 184 210)" }
 ] as const;
 
-const ZOOM_OPTIONS = [100, 125, 150, 175, 200, 250, 300] as const;
 
 const SHEET_STYLE_OPTIONS = [
   { id: "seyes" as const, label: "Lignes Seyes" },
@@ -1397,10 +1394,6 @@ function getRemPixels() {
   return Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
 }
 
-function clampZoomPercent(value: number) {
-  return Math.max(100, Math.min(300, Math.round(value)));
-}
-
 function parseStoredState(raw: string): WriterState | null {
   try {
     const parsed = JSON.parse(raw) as WriterState;
@@ -1428,10 +1421,6 @@ function parseStoredState(raw: string): WriterState | null {
     return {
       ...parsed,
       sheetStyle: parsedSheetStyle,
-      zoomPercent:
-        typeof (parsed as { zoomPercent?: unknown }).zoomPercent === "number"
-          ? clampZoomPercent((parsed as { zoomPercent: number }).zoomPercent)
-          : defaultState.zoomPercent,
       activeColor: typeof (parsed as { activeColor?: unknown }).activeColor === "string" ? parsed.activeColor : DEFAULT_ACTIVE_COLOR,
       activeHighlightColor:
         typeof (parsed as { activeHighlightColor?: unknown }).activeHighlightColor === "string"
@@ -2362,6 +2351,7 @@ export function MathWorkbook() {
   const [canvasQuickMenu, setCanvasQuickMenu] = useState<CanvasQuickMenu>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuides>({ x: null, y: null });
   const [selectedTextBoxMenuPosition, setSelectedTextBoxMenuPosition] = useState<{ x: number; y: number; placement: "above" | "below" } | null>(null);
+  const [selectedGeometryMenuPosition, setSelectedGeometryMenuPosition] = useState<{ x: number; y: number; placement: "above" | "below" } | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isExporting, setIsExporting] = useState<"pdf" | "png" | null>(null);
   const [isCanvasDropActive, setIsCanvasDropActive] = useState(false);
@@ -2369,8 +2359,6 @@ export function MathWorkbook() {
   const [isCanvasInteracting, setIsCanvasInteracting] = useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const canvasViewportRef = useRef<HTMLDivElement | null>(null);
-  const canvasTopScrollbarRef = useRef<HTMLDivElement | null>(null);
   const selectionRef = useRef<Range | null>(null);
   const dragRef = useRef<DragState>(null);
   const pendingSelectionRef = useRef<PendingSelection>(null);
@@ -2411,6 +2399,7 @@ export function MathWorkbook() {
   const pendingFocusTextBoxIdRef = useRef<string | null>(null);
   const blockInputRefs = useRef<Record<string, Record<string, HTMLInputElement | HTMLTextAreaElement | null>>>({});
   const selectedTextBoxMenuRef = useRef<HTMLDivElement | null>(null);
+  const selectedGeometryMenuRef = useRef<HTMLDivElement | null>(null);
   const historyInitializedRef = useRef(false);
   const skipHistoryRef = useRef(false);
   const previousStateRef = useRef<WriterState>(cloneWriterState(createDefaultState()));
@@ -2698,7 +2687,62 @@ export function MathWorkbook() {
       window.cancelAnimationFrame(frameId);
       window.removeEventListener("resize", resizeHandler);
     };
-  }, [editingTextBoxId, isCanvasInteracting, selectedCount, selectedTextBox, selectionRect, state.zoomPercent]);
+  }, [editingTextBoxId, isCanvasInteracting, selectedCount, selectedTextBox, selectionRect]);
+  useEffect(() => {
+    if (!selectedGeometry || selectedCount !== 1 || isCanvasInteracting || selectionRect || !canvasRef.current || activeGeometryTool) {
+      setSelectedGeometryMenuPosition(null);
+      return;
+    }
+
+    const canvasNode = canvasRef.current;
+    const geometryNode = geometryNodeRefs.current[selectedGeometry.id];
+
+    if (!canvasNode || !geometryNode) {
+      setSelectedGeometryMenuPosition(null);
+      return;
+    }
+
+    const updateMenuPosition = () => {
+      const menuNode = selectedGeometryMenuRef.current;
+      const menuOffset = 12;
+      const horizontalGutter = 18;
+      const estimatedMenuWidth = menuNode?.offsetWidth ?? 220;
+      const estimatedMenuHeight = menuNode?.offsetHeight ?? 110;
+      const canvasWidth = canvasNode.clientWidth;
+      const canvasHeight = canvasNode.clientHeight;
+      const boxLeft = geometryNode.getBBox ? geometryNode.getBBox().x : geometryNode.getBoundingClientRect().left;
+      const boxTop = geometryNode.getBBox ? geometryNode.getBBox().y : geometryNode.getBoundingClientRect().top;
+      const boxWidth = geometryNode.getBBox ? geometryNode.getBBox().width : geometryNode.getBoundingClientRect().width;
+      const boxHeight = geometryNode.getBBox ? geometryNode.getBBox().height : geometryNode.getBoundingClientRect().height;
+      const boxBottom = boxTop + boxHeight;
+      const preferredCenterX = boxLeft + boxWidth / 2;
+      const minCenterX = horizontalGutter + estimatedMenuWidth / 2;
+      const maxCenterX = canvasWidth - horizontalGutter - estimatedMenuWidth / 2;
+      const x = minCenterX <= maxCenterX ? Math.min(Math.max(preferredCenterX, minCenterX), maxCenterX) : preferredCenterX;
+      const aboveY = boxTop - estimatedMenuHeight - menuOffset;
+      const belowY = boxBottom + menuOffset;
+      const fitsAbove = aboveY >= horizontalGutter;
+      const fitsBelow = belowY + estimatedMenuHeight <= canvasHeight - horizontalGutter;
+      const placement: "above" | "below" = fitsAbove || !fitsBelow ? "above" : "below";
+      const y = placement === "above" ? Math.max(horizontalGutter, boxTop - menuOffset) : Math.min(Math.max(horizontalGutter, belowY), Math.max(horizontalGutter, canvasHeight - horizontalGutter));
+
+      setSelectedGeometryMenuPosition((current) =>
+        current && current.x === x && current.y === y && current.placement === placement ? current : { x, y, placement }
+      );
+    };
+
+    updateMenuPosition();
+
+    const frameId = window.requestAnimationFrame(updateMenuPosition);
+    const resizeHandler = () => updateMenuPosition();
+
+    window.addEventListener("resize", resizeHandler);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", resizeHandler);
+    };
+  }, [activeGeometryTool, isCanvasInteracting, selectedCount, selectedGeometry, selectionRect]);
   const pendingInsertLabel = useMemo(() => {
     if (!pendingInsertTool) {
       return "";
@@ -2793,46 +2837,6 @@ export function MathWorkbook() {
 
     setStrikeModeBlockId((current) => (current && current !== editingBlock.blockId ? null : current));
   }, [editingBlock]);
-
-  useEffect(() => {
-    const viewport = canvasViewportRef.current;
-    const topScrollbar = canvasTopScrollbarRef.current;
-
-    if (!viewport || !topScrollbar) {
-      return;
-    }
-
-    let isSyncing = false;
-
-    const syncTopFromViewport = () => {
-      if (isSyncing) {
-        return;
-      }
-
-      isSyncing = true;
-      topScrollbar.scrollLeft = viewport.scrollLeft;
-      isSyncing = false;
-    };
-
-    const syncViewportFromTop = () => {
-      if (isSyncing) {
-        return;
-      }
-
-      isSyncing = true;
-      viewport.scrollLeft = topScrollbar.scrollLeft;
-      isSyncing = false;
-    };
-
-    syncTopFromViewport();
-    viewport.addEventListener("scroll", syncTopFromViewport, { passive: true });
-    topScrollbar.addEventListener("scroll", syncViewportFromTop, { passive: true });
-
-    return () => {
-      viewport.removeEventListener("scroll", syncTopFromViewport);
-      topScrollbar.removeEventListener("scroll", syncViewportFromTop);
-    };
-  }, [state.zoomPercent]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
@@ -3808,12 +3812,11 @@ export function MathWorkbook() {
     }
 
     const bounds = canvas.getBoundingClientRect();
-    const zoom = Math.max(0.01, stateRef.current.zoomPercent / 100);
     const intrinsic = getCanvasIntrinsicSize();
 
     return {
-      x: Math.max(0, Math.min(intrinsic.width, (clientX - bounds.left) / zoom)),
-      y: Math.max(0, Math.min(intrinsic.height, (clientY - bounds.top) / zoom))
+      x: Math.max(0, Math.min(intrinsic.width, clientX - bounds.left)),
+      y: Math.max(0, Math.min(intrinsic.height, clientY - bounds.top))
     };
   }
 
@@ -4067,14 +4070,14 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     updateGeometryShape(selectedGeometry.id, (shape) => (shape.kind === "point" ? { ...shape, label } : shape));
   }
 
-  function updateSelectedSegmentLengthCm(lengthCm: string) {
+  function updateSelectedSegmentLengthMm(lengthMm: string) {
     if (!selectedGeometry || selectedGeometry.kind !== "segment") {
       return;
     }
 
-    const nextLengthCm = Number.parseFloat(lengthCm.replace(",", "."));
+    const nextLengthMm = Number.parseFloat(lengthMm.replace(",", "."));
 
-    if (!Number.isFinite(nextLengthCm) || nextLengthCm <= 0) {
+    if (!Number.isFinite(nextLengthMm) || nextLengthMm <= 0) {
       return;
     }
 
@@ -4084,24 +4087,23 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       }
 
       const direction = getGeometryLinearDirection(shape);
-      const nextLengthMm = Math.max(1, nextLengthCm * 10);
 
       return {
         ...shape,
-        bxMm: shape.axMm + direction.dx * nextLengthMm,
-        byMm: shape.ayMm + direction.dy * nextLengthMm
+        bxMm: shape.axMm + direction.dx * Math.max(1, nextLengthMm),
+        byMm: shape.ayMm + direction.dy * Math.max(1, nextLengthMm)
       };
     });
   }
 
-  function updateSelectedCircleRadiusCm(radiusCm: string) {
+  function updateSelectedCircleRadiusMm(radiusMm: string) {
     if (!selectedGeometry || selectedGeometry.kind !== "circle") {
       return;
     }
 
-    const nextRadiusCm = Number.parseFloat(radiusCm.replace(",", "."));
+    const nextRadiusMm = Number.parseFloat(radiusMm.replace(",", "."));
 
-    if (!Number.isFinite(nextRadiusCm) || nextRadiusCm <= 0) {
+    if (!Number.isFinite(nextRadiusMm) || nextRadiusMm <= 0) {
       return;
     }
 
@@ -4109,7 +4111,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       shape.kind === "circle"
         ? {
             ...shape,
-            radiusMm: Math.max(1, nextRadiusCm * 10)
+            radiusMm: Math.max(1, nextRadiusMm)
           }
         : shape
     );
@@ -7287,7 +7289,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
 
       <header className={`top-toolbar ${isToolsPanelOpen ? "top-toolbar-open" : ""}`}>
         <div className="top-toolbar-inner">
-          <div className="toolbar-row toolbar-row-secondary sidebar-block">
+          <div className="toolbar-row toolbar-row-secondary sidebar-block sidebar-block-compact">
             <p className="sidebar-block-label">Opérations posées</p>
             <div className="toolbar-shortcut-group" aria-label="Outils d'insertion">
               {operationStructuredTools.map((tool) => (
@@ -7315,7 +7317,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
             </div>
           </div>
 
-          <div className="toolbar-row toolbar-row-secondary sidebar-block">
+          <div className="toolbar-row toolbar-row-secondary sidebar-block sidebar-block-compact">
             <p className="sidebar-block-label">Symboles courants</p>
             <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis symboles courants">
               {rootStructuredTool ? (
@@ -7363,7 +7365,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
             </div>
           </div>
 
-          <div className="toolbar-row toolbar-row-secondary sidebar-block">
+          <div className="toolbar-row toolbar-row-secondary sidebar-block sidebar-block-compact">
             <p className="sidebar-block-label">Outils lycée</p>
             <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis lycée">
               {visibleLyceeInlineShortcuts.map((shortcut) => (
@@ -7390,7 +7392,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
             </div>
           </div>
 
-          <div className="toolbar-row toolbar-row-secondary sidebar-block">
+          <div className="toolbar-row toolbar-row-secondary sidebar-block sidebar-block-compact">
             <p className="sidebar-block-label">Géométrie précise</p>
             <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Outils de géométrie précise">
               {GEOMETRY_TOOL_OPTIONS.map((tool) => (
@@ -7407,51 +7409,10 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                 </button>
               ))}
             </div>
-            <p className="sidebar-helper geometry-panel-helper">{geometryPanelHelper}</p>
-            {selectedGeometry ? (
-              <div className="geometry-settings" onMouseDown={(event) => event.stopPropagation()}>
-                <p className="geometry-settings-title">Objet sélectionné</p>
-                {selectedGeometry.kind === "point" ? (
-                  <label className="geometry-settings-field">
-                    <span>Nom du point</span>
-                    <input
-                      type="text"
-                      value={selectedGeometry.label}
-                      placeholder="A"
-                      onChange={(event) => updateSelectedPointLabel(event.target.value.toUpperCase().slice(0, 4))}
-                    />
-                  </label>
-                ) : null}
-                {selectedGeometry.kind === "segment" ? (
-                  <label className="geometry-settings-field">
-                    <span>Longueur (cm)</span>
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      value={Number((Math.hypot(selectedGeometry.bxMm - selectedGeometry.axMm, selectedGeometry.byMm - selectedGeometry.ayMm) / 10).toFixed(2))}
-                      onChange={(event) => updateSelectedSegmentLengthCm(event.target.value)}
-                    />
-                  </label>
-                ) : null}
-                {selectedGeometry.kind === "circle" ? (
-                  <label className="geometry-settings-field">
-                    <span>Rayon (cm)</span>
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      value={Number((selectedGeometry.radiusMm / 10).toFixed(2))}
-                      onChange={(event) => updateSelectedCircleRadiusCm(event.target.value)}
-                    />
-                  </label>
-                ) : null}
-                <p className="geometry-settings-note">Les figures sont stockées en millimètres pour rester à l’échelle dans le PDF.</p>
-              </div>
-            ) : null}
+            {activeGeometryTool ? <p className="sidebar-helper geometry-panel-helper">{geometryPanelHelper}</p> : null}
           </div>
 
-          <div className="toolbar-row toolbar-row-format sidebar-block" aria-label="Mise en forme">
+          <div className="toolbar-row toolbar-row-format sidebar-block sidebar-block-compact" aria-label="Mise en forme">
             <p className="sidebar-block-label">Mise en forme</p>
             <div className="editor-local-toolbar-group">
               {COLOR_OPTIONS.map((option) => (
@@ -7624,39 +7585,14 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                   ))}
                 </select>
               </label>
-              <label className="sheet-style-picker">
-                <span>Zoom</span>
-                <select
-                  className="sheet-style-select"
-                  value={state.zoomPercent}
-                  onChange={(event) => setState((current) => ({ ...current, zoomPercent: clampZoomPercent(Number(event.target.value)) }))}
-                  aria-label="Niveau de zoom"
-                >
-                  {ZOOM_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}%
-                    </option>
-                  ))}
-                </select>
-              </label>
             </div>
           </div>
 
-          <div
-            className={`document-canvas-scroll-shell ${state.zoomPercent > 100 ? "document-canvas-scroll-shell-zoomed" : ""}`}
-            style={{ ["--canvas-zoom" as string]: state.zoomPercent / 100 } as ReactCSSProperties}
-          >
-            <div className="document-canvas-top-scrollbar" ref={canvasTopScrollbarRef} aria-hidden="true">
-              <div className="document-canvas-top-scrollbar-track" />
-            </div>
-            <div
-              className={`document-canvas-viewport ${state.zoomPercent > 100 ? "document-canvas-viewport-zoomed" : ""}`}
-              ref={canvasViewportRef}
-            >
+          <div className="document-canvas-viewport">
             <div className="document-canvas-stage">
               <div
                 className={`document-canvas document-canvas-${state.sheetStyle} ${isCanvasDropActive ? "document-canvas-drop-active" : ""} ${isCanvasInteracting ? "document-canvas-interacting" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || activeGeometryTool ? "document-canvas-draw-mode" : ""} ${advancedTool === "highlight" ? "document-canvas-highlight-mode" : ""} ${activeGeometryTool === "protractor" ? "document-canvas-protractor-mode" : ""} ${pendingInsertTool ? "document-canvas-insert-mode" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "select" || advancedTool === "move" || pendingInsertTool || activeGeometryTool ? "document-canvas-touch-locked" : ""}`}
-                style={{ "--canvas-type-size": `${getDefaultCanvasFontSize(state.sheetStyle)}rem`, ["zoom" as string]: state.zoomPercent / 100 } as ReactCSSProperties}
+                style={{ "--canvas-type-size": `${getDefaultCanvasFontSize(state.sheetStyle)}rem` } as ReactCSSProperties}
                 ref={canvasRef}
                 onDragOver={handleCanvasDragOver}
                 onDragLeave={handleCanvasDragLeave}
@@ -8548,6 +8484,62 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               </div>
             ) : null}
 
+            {selectedGeometry && selectedGeometryMenuPosition ? (
+              <div
+                ref={selectedGeometryMenuRef}
+                className="canvas-quick-menu canvas-geometry-settings-menu"
+                style={{ left: `${selectedGeometryMenuPosition.x}px`, top: `${selectedGeometryMenuPosition.y}px` }}
+                data-placement={selectedGeometryMenuPosition.placement}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="canvas-quick-close"
+                  aria-label="Fermer les réglages"
+                  title="Fermer"
+                  onClick={clearFloatingSelection}
+                >
+                  ×
+                </button>
+                <p className="geometry-settings-title">Réglages</p>
+                {selectedGeometry.kind === "point" ? (
+                  <label className="geometry-settings-field">
+                    <span>Nom du point</span>
+                    <input
+                      type="text"
+                      value={selectedGeometry.label}
+                      placeholder="A"
+                      onChange={(event) => updateSelectedPointLabel(event.target.value.toUpperCase().slice(0, 4))}
+                    />
+                  </label>
+                ) : null}
+                {selectedGeometry.kind === "segment" ? (
+                  <label className="geometry-settings-field">
+                    <span>Longueur (mm)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={Math.round(Math.hypot(selectedGeometry.bxMm - selectedGeometry.axMm, selectedGeometry.byMm - selectedGeometry.ayMm))}
+                      onChange={(event) => updateSelectedSegmentLengthMm(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+                {selectedGeometry.kind === "circle" ? (
+                  <label className="geometry-settings-field">
+                    <span>Rayon (mm)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={Math.round(selectedGeometry.radiusMm)}
+                      onChange={(event) => updateSelectedCircleRadiusMm(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
+
             {selectedTextBoxMenuPosition ? (
               <div
                 ref={selectedTextBoxMenuRef}
@@ -8660,7 +8652,6 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               />
             ) : null}
               </div>
-            </div>
             </div>
           </div>
         </div>
