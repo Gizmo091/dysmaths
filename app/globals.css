@@ -1317,6 +1317,8 @@ input {
   padding: 0.16rem 0.52rem;
   border: 1px solid rgba(92, 108, 129, 0.16);
   border-radius: 999px;
+  appearance: none;
+  -webkit-appearance: none;
   background: rgba(255, 253, 249, 0.98);
   color: var(--ink);
   font: inherit;
@@ -1386,11 +1388,22 @@ input {
   padding: 0.08rem 0.42rem;
   border: 1px dashed rgba(31, 45, 61, 0.22);
   border-radius: 999px;
+  appearance: none;
+  -webkit-appearance: none;
   background: rgba(255, 255, 255, 0.62);
   color: rgba(31, 45, 61, 0.7);
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.2;
+}
+
+.division-cell-button,
+.operation-edit-menu-button,
+.addition-carry-toggle-button {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .addition-number-input {

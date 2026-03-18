@@ -1749,6 +1749,7 @@ export function MathWorkbook() {
   const toolbarDragMetaRef = useRef<ToolbarDragMeta | null>(null);
   const advancedToolRef = useRef<AdvancedTool>(null);
   const editingBlockRef = useRef<EditingBlockState>(null);
+  const recentInlineBlockInteractionRef = useRef<{ blockId: string; timeStamp: number } | null>(null);
   const blockNodeRefs = useRef<Record<string, HTMLElement | null>>({});
   const symbolNodeRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const textBoxNodeRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -3673,6 +3674,23 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     );
   }
 
+  function markInlineBlockInteraction(blockId: string) {
+    recentInlineBlockInteractionRef.current = { blockId, timeStamp: Date.now() };
+  }
+
+  function shouldKeepInlineBlockEditing(blockId: string) {
+    const blockNode = blockNodeRefs.current[blockId];
+    const activeElement = typeof document === "undefined" ? null : document.activeElement;
+
+    if (blockNode && activeElement && blockNode.contains(activeElement)) {
+      return true;
+    }
+
+    const recentInteraction = recentInlineBlockInteractionRef.current;
+
+    return recentInteraction?.blockId === blockId && Date.now() - recentInteraction.timeStamp < 240;
+  }
+
   function shouldCloseEditingBlock(target: EventTarget | null) {
     if (!editingBlock?.blockId) {
       return false;
@@ -4478,6 +4496,10 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
         };
       },
       className: "math-inline-input",
+      autoComplete: "off" as const,
+      autoCorrect: "off" as const,
+      autoCapitalize: "off" as const,
+      spellCheck: false,
       onMouseDown: (event: ReactMouseEvent<HTMLInputElement | HTMLTextAreaElement>) => event.stopPropagation(),
       onFocus: () => setEditingBlock({ blockId: block.id, field }),
       onChange: (event: ReactChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => updateInlineBlockField(block.id, field, event.target.value),
@@ -4490,6 +4512,10 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
         }
 
         setTimeout(() => {
+          if (shouldKeepInlineBlockEditing(block.id)) {
+            return;
+          }
+
           if (strikeModeBlockIdRef.current === block.id) {
             return;
           }
@@ -4529,7 +4555,11 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       </div>
     );
     const wrapInlineOperationEditor = (blockId: string, content: ReactNode) => (
-      <div className={`operation-edit-shell ${strikeModeBlockId === blockId ? "operation-edit-shell-strike-mode" : ""}`}>
+      <div
+        className={`operation-edit-shell ${strikeModeBlockId === blockId ? "operation-edit-shell-strike-mode" : ""}`}
+        onMouseDownCapture={() => markInlineBlockInteraction(blockId)}
+        onTouchStartCapture={() => markInlineBlockInteraction(blockId)}
+      >
         {content}
         {renderInlineOperationMenu(blockId)}
       </div>
@@ -4671,6 +4701,10 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                           pattern="[0-9]*"
                           maxLength={1}
                           className="addition-carry-input"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck={false}
                           onMouseDown={(event) => event.stopPropagation()}
                           onFocus={() => activateCarryEditing(carryField, offsetFromRight)}
                           onBlur={(event) => {
@@ -4681,6 +4715,10 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                             }
 
                             setTimeout(() => {
+                              if (shouldKeepInlineBlockEditing(arithmeticBlock.id)) {
+                                return;
+                              }
+
                               if (strikeModeBlockIdRef.current === arithmeticBlock.id) {
                                 return;
                               }
