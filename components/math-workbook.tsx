@@ -170,6 +170,8 @@ type FloatingSymbol = {
   type: "symbol";
   label: string;
   content: string;
+  kind?: "text" | "sum";
+  size?: number;
   x: number;
   y: number;
   color: string;
@@ -325,6 +327,16 @@ type SnapGuides = {
 };
 
 type AdvancedTool = "select" | "move" | "note" | "draw" | "highlight" | null;
+type SymbolResizeHandle = "nw" | "se";
+type SymbolResizeState = {
+  symbolId: string;
+  handle: SymbolResizeHandle;
+  startClientX: number;
+  startClientY: number;
+  startX: number;
+  startY: number;
+  startSize: number;
+};
 
 const STORAGE_KEY = "maths-facile-free-layout-v1";
 const FLOATING_TEXTBOX_Y_OFFSET = 10;
@@ -338,6 +350,7 @@ const MAX_SNAP_THRESHOLD_PX = 10;
 const CANVAS_LINE_BASELINE_OFFSET_PX = 5;
 const DEFAULT_ACTIVE_COLOR = "#1f2d3d";
 const DEFAULT_HIGHLIGHT_TOOL_COLOR = "rgb(255 226 92)";
+const DEFAULT_SUM_SYMBOL_SIZE = 54;
 const HIGHLIGHT_STROKE_OPACITY = 0.4;
 const HIGHLIGHT_STROKE_WIDTH = 10;
 const MM_TO_PX = 96 / 25.4;
@@ -569,6 +582,23 @@ function renderStructuredToolGlyph(toolId: StructuredTool) {
   }
 
   return "√";
+}
+
+function renderSumSymbolSvg(size: number) {
+  const strokeWidth = Math.max(4, Math.round(size * 0.08));
+
+  return (
+    <svg viewBox="0 0 100 120" aria-hidden="true" focusable="false">
+      <path
+        d="M72 18H28L57 60L28 102H72"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function getTextBoxWidth(text: string) {
@@ -916,6 +946,13 @@ function parseStoredState(raw: string): WriterState | null {
       symbols: Array.isArray(parsed.symbols)
         ? parsed.symbols.map((symbol) => ({
             ...symbol,
+            kind: (symbol as { kind?: unknown }).kind === "sum" ? "sum" : "text",
+            size:
+              typeof (symbol as { size?: unknown }).size === "number"
+                ? (symbol as { size: number }).size
+                : (symbol as { kind?: unknown }).kind === "sum"
+                  ? DEFAULT_SUM_SYMBOL_SIZE
+                  : undefined,
             color: typeof symbol.color === "string" ? symbol.color : DEFAULT_ACTIVE_COLOR,
             fontSize: typeof symbol.fontSize === "number" ? symbol.fontSize : defaultFontSize,
             fontWeight: typeof (symbol as { fontWeight?: unknown }).fontWeight === "number" ? (symbol as { fontWeight: number }).fontWeight : 500,
@@ -1752,6 +1789,7 @@ export function MathWorkbook() {
   const advancedToolRef = useRef<AdvancedTool>(null);
   const editingBlockRef = useRef<EditingBlockState>(null);
   const recentInlineBlockInteractionRef = useRef<{ blockId: string; timeStamp: number } | null>(null);
+  const symbolResizeRef = useRef<SymbolResizeState | null>(null);
   const blockNodeRefs = useRef<Record<string, HTMLElement | null>>({});
   const symbolNodeRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const textBoxNodeRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -2222,6 +2260,11 @@ export function MathWorkbook() {
 
   useEffect(() => {
     function handlePointerMove(clientX: number, clientY: number) {
+      if (symbolResizeRef.current) {
+        updateSymbolResize(clientX, clientY);
+        return;
+      }
+
       if (isDrawingStrokeRef.current) {
         const point = getCanvasPoint(clientX, clientY);
         const currentPoints = draftStrokeRef.current;
@@ -2353,7 +2396,7 @@ export function MathWorkbook() {
     }
 
     function handleTouchMove(event: TouchEvent) {
-      if (!isDrawingStrokeRef.current && !pendingSelectionRef.current && !dragRef.current) {
+      if (!isDrawingStrokeRef.current && !pendingSelectionRef.current && !dragRef.current && !symbolResizeRef.current) {
         return;
       }
 
@@ -2368,6 +2411,14 @@ export function MathWorkbook() {
     }
 
     function handleMouseUp() {
+      if (symbolResizeRef.current) {
+        symbolResizeRef.current = null;
+        commitTransientHistorySession("drag");
+        setIsCanvasInteracting(false);
+        setSnapGuides({ x: null, y: null });
+        return;
+      }
+
       if (isDrawingStrokeRef.current) {
         const points = draftStrokeRef.current;
         const strokeStyle = draftStrokeStyleRef.current;
@@ -2584,24 +2635,62 @@ export function MathWorkbook() {
     return { id: createId("root"), type, radicand: "", result: "", caption: "", color: state.activeColor, fontSize: defaultFontSize, fontWeight: 500, fontStyle: "normal", underline: false, highlightColor: null, ...position } satisfies MathBlock;
   }
 
-function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number) {
-  const defaultFontSize = getDefaultCanvasFontSize(state.sheetStyle);
-  return {
+  function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number) {
+    const defaultFontSize = getDefaultCanvasFontSize(state.sheetStyle);
+
+    if (shortcut.id === "sum") {
+      return {
+        id: createId("symbol"),
+        type: "symbol",
+        label: shortcut.label,
+        content: shortcut.label,
+        kind: "sum",
+        size: DEFAULT_SUM_SYMBOL_SIZE,
+        x,
+        y,
+        color: state.activeColor,
+        fontSize: defaultFontSize,
+        fontWeight: 500,
+        fontStyle: "normal",
+        underline: false,
+        highlightColor: null
+      } satisfies FloatingSymbol;
+    }
+
+    return {
       id: createId("symbol"),
       type: "symbol",
       label: shortcut.label,
       content: shortcut.content.trim() || shortcut.label,
+      kind: "text",
       x,
       y,
       color: state.activeColor,
-      fontSize: defaultFontSize
-      ,
+      fontSize: defaultFontSize,
       fontWeight: 500,
       fontStyle: "normal",
       underline: false,
       highlightColor: null
-  } satisfies FloatingSymbol;
-}
+    } satisfies FloatingSymbol;
+  }
+
+  function getFloatingSymbolMeasure(symbol: FloatingSymbol) {
+    if (symbol.kind === "sum") {
+      const size = symbol.size ?? DEFAULT_SUM_SYMBOL_SIZE;
+      return {
+        width: size,
+        height: size
+      };
+    }
+
+    const defaultFontSize = getDefaultCanvasFontSize(state.sheetStyle);
+    const textMeasure = Math.max(24, Math.round((symbol.fontSize || defaultFontSize) * 18));
+
+    return {
+      width: textMeasure,
+      height: Math.max(24, Math.round((symbol.fontSize || defaultFontSize) * 20))
+    };
+  }
 
   function createFloatingTextBox(x: number, y: number, variant: "default" | "note" = "default", notation: "plain" | "angle" = "plain") {
     const defaultFontSize = getDefaultCanvasFontSize(state.sheetStyle);
@@ -2728,6 +2817,59 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
     setSelectedBlockIds([]);
     setSelectedTextBoxIds([]);
     setSelectedStrokeIds([]);
+  }
+
+  function startSymbolResize(symbolId: string, handle: SymbolResizeHandle, clientX: number, clientY: number) {
+    const symbol = stateRef.current.symbols.find((item) => item.id === symbolId);
+
+    if (!symbol || symbol.kind !== "sum") {
+      return;
+    }
+
+    selectSingleSymbol(symbolId);
+    setCanvasQuickMenu(null);
+    beginTransientHistorySession("drag");
+    symbolResizeRef.current = {
+      symbolId,
+      handle,
+      startClientX: clientX,
+      startClientY: clientY,
+      startX: symbol.x,
+      startY: symbol.y,
+      startSize: symbol.size ?? DEFAULT_SUM_SYMBOL_SIZE
+    };
+    setIsCanvasInteracting(true);
+  }
+
+  function updateSymbolResize(clientX: number, clientY: number) {
+    const resize = symbolResizeRef.current;
+
+    if (!resize) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const bounds = canvas.getBoundingClientRect();
+    const dx = clientX - resize.startClientX;
+    const dy = clientY - resize.startClientY;
+    const delta = resize.handle === "se" ? Math.max(dx, dy) : Math.max(-dx, -dy);
+    const nextSize = Math.max(24, Math.min(220, Math.round(resize.startSize + delta)));
+    const nextX = resize.handle === "se" ? resize.startX : resize.startX + (resize.startSize - nextSize);
+    const nextY = resize.handle === "se" ? resize.startY : resize.startY + (resize.startSize - nextSize);
+
+    setState((current) => ({
+      ...current,
+      symbols: current.symbols.map((symbol) =>
+        symbol.id === resize.symbolId && symbol.kind === "sum"
+          ? { ...symbol, x: Math.max(18, Math.min(bounds.width - 24, nextX)), y: Math.max(18, Math.min(bounds.height - 24, nextY)), size: nextSize }
+          : symbol
+      )
+    }));
   }
 
   function selectSingleTextBox(textBoxId: string) {
@@ -3129,7 +3271,8 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       ...state.symbols.map((symbol) => {
         const node = symbolNodeRefs.current[symbol.id];
         const rect = node?.getBoundingClientRect();
-        return symbol.y + Math.max(targetHeight, rect?.height ?? symbol.fontSize * 20);
+        const symbolMeasure = getFloatingSymbolMeasure(symbol);
+        return symbol.y + Math.max(targetHeight, rect?.height ?? symbolMeasure.height);
       }),
       ...state.textBoxes.map((textBox) => {
         const node = textBoxNodeRefs.current[textBox.id];
@@ -3238,6 +3381,19 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
         textBoxes: [...current.textBoxes, textBox]
       }));
       beginTextBoxEditing(textBox.id);
+      setCanvasQuickMenu(null);
+      return;
+    }
+
+    if (shortcut.id === "sum") {
+      const symbol = createFloatingSymbol(shortcut, placement.x, placement.y);
+      beginTransientHistorySession("edit");
+
+      setState((current) => ({
+        ...current,
+        symbols: [...current.symbols, symbol]
+      }));
+      selectSingleSymbol(symbol.id);
       setCanvasQuickMenu(null);
       return;
     }
@@ -3989,14 +4145,15 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
         .map((symbol) => {
           const node = symbolNodeRefs.current[symbol.id];
           const rect = node?.getBoundingClientRect();
+          const symbolMeasure = getFloatingSymbolMeasure(symbol);
 
           return {
             id: symbol.id,
             type: "symbol" as const,
             x: symbol.x,
             y: symbol.y,
-            width: Math.max(24, rect?.width ?? 32),
-            height: Math.max(24, rect?.height ?? symbol.fontSize * 18)
+            width: Math.max(24, rect?.width ?? symbolMeasure.width),
+            height: Math.max(24, rect?.height ?? symbolMeasure.height)
           };
         }),
       ...state.textBoxes
@@ -4388,6 +4545,18 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
         textBoxes: [...current.textBoxes, textBox]
       }));
       beginTextBoxEditing(textBox.id);
+      return;
+    }
+
+    if (shortcut.id === "sum") {
+      const symbol = createFloatingSymbol(shortcut, position.x, position.y);
+      beginTransientHistorySession("edit");
+
+      setState((current) => ({
+        ...current,
+        symbols: [...current.symbols, symbol]
+      }));
+      selectSingleSymbol(symbol.id);
       return;
     }
 
@@ -5517,6 +5686,19 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
       return;
     }
 
+    if (shortcut.id === "sum") {
+      const symbol = createFloatingSymbol(shortcut, position.x, position.y);
+      beginTransientHistorySession("edit");
+
+      setState((current) => ({
+        ...current,
+        symbols: [...current.symbols, symbol]
+      }));
+      selectSingleSymbol(symbol.id);
+      setCanvasQuickMenu(null);
+      return;
+    }
+
     const symbol = createFloatingSymbol(shortcut, position.x, position.y);
     beginTransientHistorySession("edit");
 
@@ -5706,6 +5888,16 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                   </div>
                 ) : null}
               </div>
+              <button
+                type="button"
+                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "draw" ? "toolbar-shortcut-active" : ""}`}
+                title="Dessin libre"
+                aria-label="Dessin libre"
+                aria-pressed={advancedTool === "draw"}
+                onClick={() => toggleAdvancedToolMode("draw")}
+              >
+                ✎
+              </button>
             </div>
 
             <div className="editor-local-toolbar-group toolbar-advanced-group" aria-label="Outils avancés">
@@ -5726,16 +5918,6 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
                 onClick={() => toggleAdvancedToolMode("note")}
               >
                 t
-              </button>
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "draw" ? "toolbar-shortcut-active" : ""}`}
-                title="Dessin libre"
-                aria-label="Dessin libre"
-                aria-pressed={advancedTool === "draw"}
-                onClick={() => toggleAdvancedToolMode("draw")}
-              >
-                ✎
               </button>
               <button
                 type="button"
@@ -6039,34 +6221,94 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
               </article>
             ))}
 
-            {state.symbols.map((symbol) => (
-              <button
-                key={symbol.id}
-                type="button"
-                ref={(node) => {
-                  symbolNodeRefs.current[symbol.id] = node;
-                }}
-                className={`floating-math-symbol ${selectedSymbolIds.includes(symbol.id) ? "floating-math-symbol-selected" : ""}`}
-                style={{
-                  left: `${symbol.x}px`,
-                  top: `${symbol.y}px`,
-                  color: symbol.color,
-                  fontSize: `${symbol.fontSize}rem`,
-                  fontWeight: symbol.fontWeight,
-                  fontStyle: symbol.fontStyle,
-                  textDecoration: symbol.underline ? "underline" : "none",
-                  backgroundColor: symbol.highlightColor ?? undefined
-                }}
-                onMouseDown={(event) => {
-                  startDragging("symbol", symbol.id, symbol.x, symbol.y, event);
-                }}
-                onTouchStart={(event) => {
-                  handleTouchDragStart("symbol", symbol.id, symbol.x, symbol.y, event);
-                }}
-              >
-                {symbol.content}
-              </button>
-            ))}
+            {state.symbols.map((symbol) => {
+              const isSumSymbol = symbol.kind === "sum";
+              const isSelected = selectedSymbolIds.includes(symbol.id);
+              const symbolSize = Math.max(24, Math.round(symbol.size ?? symbol.fontSize * 18));
+
+              return (
+                <button
+                  key={symbol.id}
+                  type="button"
+                  ref={(node) => {
+                    symbolNodeRefs.current[symbol.id] = node;
+                  }}
+                  className={`floating-math-symbol ${isSumSymbol ? "floating-math-symbol-sum" : ""} ${isSelected ? "floating-math-symbol-selected" : ""}`}
+                  style={{
+                    left: `${symbol.x}px`,
+                    top: `${symbol.y}px`,
+                    width: isSumSymbol ? `${symbolSize}px` : undefined,
+                    height: isSumSymbol ? `${symbolSize}px` : undefined,
+                    color: symbol.color,
+                    fontSize: isSumSymbol ? undefined : `${symbol.fontSize}rem`,
+                    fontWeight: symbol.fontWeight,
+                    fontStyle: symbol.fontStyle,
+                    textDecoration: symbol.underline ? "underline" : "none",
+                    backgroundColor: symbol.highlightColor ?? undefined
+                  }}
+                  onMouseDown={(event) => {
+                    startDragging("symbol", symbol.id, symbol.x, symbol.y, event);
+                  }}
+                  onTouchStart={(event) => {
+                    handleTouchDragStart("symbol", symbol.id, symbol.x, symbol.y, event);
+                  }}
+                >
+                  {isSumSymbol ? (
+                    <>
+                      <span className="floating-math-symbol-sum-vector" aria-hidden="true">
+                        {renderSumSymbolSvg(symbolSize)}
+                      </span>
+                      {isSelected ? (
+                        <>
+                          <span
+                            className="floating-math-symbol-resize-handle floating-math-symbol-resize-handle-nw"
+                            aria-hidden="true"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              startSymbolResize(symbol.id, "nw", event.clientX, event.clientY);
+                            }}
+                            onTouchStart={(event) => {
+                              const touch = event.touches[0];
+
+                              if (!touch) {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              event.stopPropagation();
+                              startSymbolResize(symbol.id, "nw", touch.clientX, touch.clientY);
+                            }}
+                          />
+                          <span
+                            className="floating-math-symbol-resize-handle floating-math-symbol-resize-handle-se"
+                            aria-hidden="true"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              startSymbolResize(symbol.id, "se", event.clientX, event.clientY);
+                            }}
+                            onTouchStart={(event) => {
+                              const touch = event.touches[0];
+
+                              if (!touch) {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              event.stopPropagation();
+                              startSymbolResize(symbol.id, "se", touch.clientX, touch.clientY);
+                            }}
+                          />
+                        </>
+                      ) : null}
+                    </>
+                  ) : (
+                    symbol.content
+                  )}
+                </button>
+              );
+            })}
 
             {state.textBoxes.map((textBox) => (
               (() => {
