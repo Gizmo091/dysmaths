@@ -546,6 +546,20 @@ button {
   letter-spacing: -0.04em;
 }
 
+.geometry-tool-protractor-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1rem;
+}
+
+.geometry-tool-protractor-glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .toolbar-shortcut-active {
   background: color-mix(in srgb, var(--ink) 92%, var(--paper));
   color: #fffdf9;
@@ -2605,6 +2619,11 @@ input {
   cursor: none;
 }
 
+.document-canvas-protractor-mode,
+.document-canvas-protractor-mode .canvas-editor {
+  cursor: crosshair;
+}
+
 .document-canvas-insert-mode {
   cursor: default;
 }
@@ -2804,6 +2823,15 @@ input {
   white-space: nowrap;
   transform: translate(12px, -20px);
   pointer-events: none;
+}
+
+.canvas-geometry-tool-capture {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  cursor: crosshair;
+  pointer-events: auto;
+  background: transparent;
 }
 
 .canvas-geometry-layer-passive,

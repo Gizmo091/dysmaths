@@ -576,7 +576,7 @@ const GEOMETRY_TOOL_OPTIONS = [
   { id: "ray" as const, label: "Demi-droite", hint: "Tracer une demi-droite", glyph: "→" },
   { id: "circle" as const, label: "Cercle", hint: "Tracer un cercle", glyph: "◯" },
   { id: "measure" as const, label: "Règle", hint: "Mesurer une distance", glyph: "cm" },
-  { id: "protractor" as const, label: "Rapporteur", hint: "Mesurer un angle", glyph: "∡" }
+  { id: "protractor" as const, label: "Rapporteur", hint: "Mesurer un angle", glyph: "protractor" }
 ] as const;
 
 const STRUCTURED_TOOLS = [
@@ -673,6 +673,23 @@ function renderStructuredToolGlyph(toolId: StructuredTool) {
   }
 
   return "√";
+}
+
+function renderGeometryToolGlyph(tool: (typeof GEOMETRY_TOOL_OPTIONS)[number]) {
+  if (tool.id !== "protractor") {
+    return tool.glyph;
+  }
+
+  return (
+    <span className="geometry-tool-protractor-glyph" aria-hidden="true">
+      <svg viewBox="0 0 100 60" focusable="false">
+        <path d="M10 50A40 40 0 0 1 90 50" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+        <path d="M50 50L50 18" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+        <path d="M26 50L31 36" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+        <path d="M74 50L69 36" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
 }
 
 function renderSumSymbolSvg(size: number) {
@@ -1208,6 +1225,55 @@ function getGeometryProtractorPaths(vertex: GeometryPointCoordinate, baseline: G
     baselineAngle,
     protractorPath: `M ${centerX} ${centerY} L ${outerStart.x} ${outerStart.y} A ${radius} ${radius} 0 0 ${semiSweepFlag} ${outerEnd.x} ${outerEnd.y} Z`,
     measuredArcPath: `M ${getGeometryPolarPoint(vertex, radius - 8, baselineAngle).x} ${getGeometryPolarPoint(vertex, radius - 8, baselineAngle).y} A ${radius - 8} ${radius - 8} 0 ${largeArcFlag} ${sweepFlag} ${arcEnd.x} ${arcEnd.y}`
+  };
+}
+
+function isGeometryConstructionTool(tool: GeometryTool | null) {
+  return tool === "point" || tool === "segment" || tool === "line" || tool === "ray" || tool === "circle";
+}
+
+function getSnapPointOnRayPx(pointX: number, pointY: number, vertex: GeometryPointCoordinate, rayPoint: GeometryPointCoordinate) {
+  const vx = mmToPx(vertex.xMm);
+  const vy = mmToPx(vertex.yMm);
+  const rx = mmToPx(rayPoint.xMm);
+  const ry = mmToPx(rayPoint.yMm);
+  const dx = rx - vx;
+  const dy = ry - vy;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared <= 0.0001) {
+    return null;
+  }
+
+  const projection = ((pointX - vx) * dx + (pointY - vy) * dy) / lengthSquared;
+  const clampedProjection = Math.max(0, projection);
+
+  return {
+    x: vx + dx * clampedProjection,
+    y: vy + dy * clampedProjection,
+    distance: Math.hypot(pointX - (vx + dx * clampedProjection), pointY - (vy + dy * clampedProjection))
+  };
+}
+
+function getSnapPointOnLinePx(pointX: number, pointY: number, vertex: GeometryPointCoordinate, linePoint: GeometryPointCoordinate) {
+  const vx = mmToPx(vertex.xMm);
+  const vy = mmToPx(vertex.yMm);
+  const lx = mmToPx(linePoint.xMm);
+  const ly = mmToPx(linePoint.yMm);
+  const dx = lx - vx;
+  const dy = ly - vy;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared <= 0.0001) {
+    return null;
+  }
+
+  const projection = ((pointX - vx) * dx + (pointY - vy) * dy) / lengthSquared;
+
+  return {
+    x: vx + dx * projection,
+    y: vy + dy * projection,
+    distance: Math.hypot(pointX - (vx + dx * projection), pointY - (vy + dy * projection))
   };
 }
 
@@ -2215,6 +2281,7 @@ export function MathWorkbook() {
   const activeGeometryToolRef = useRef<GeometryTool | null>(null);
   const geometryDraftRef = useRef<GeometryDraft | null>(null);
   const geometryProtractorDraftRef = useRef<GeometryProtractorDraft | null>(null);
+  const geometryAngleMeasurementRef = useRef<GeometryAngleMeasurement | null>(null);
   const editingBlockRef = useRef<EditingBlockState>(null);
   const recentInlineBlockInteractionRef = useRef<{ blockId: string; timeStamp: number } | null>(null);
   const symbolResizeRef = useRef<SymbolResizeState | null>(null);
@@ -2550,6 +2617,10 @@ export function MathWorkbook() {
   useEffect(() => {
     geometryProtractorDraftRef.current = geometryProtractorDraft;
   }, [geometryProtractorDraft]);
+
+  useEffect(() => {
+    geometryAngleMeasurementRef.current = geometryAngleMeasurement;
+  }, [geometryAngleMeasurement]);
 
   useEffect(() => {
     editingBlockRef.current = editingBlock;
@@ -3612,6 +3683,22 @@ export function MathWorkbook() {
     const point = getPreciseCanvasPoint(clientX, clientY);
     let nextX = Math.max(18, Math.min(intrinsic.width - 18, Math.round(point.x)));
     let nextY = Math.max(18, Math.min(intrinsic.height - 18, Math.round(point.y)));
+    const activeTool = activeGeometryToolRef.current;
+    const measuredAngle = geometryAngleMeasurementRef.current;
+    const shouldSnapToProtractor = isGeometryConstructionTool(activeTool) && Boolean(measuredAngle);
+
+    if (shouldSnapToProtractor && measuredAngle) {
+      const candidates = [
+        getSnapPointOnLinePx(nextX, nextY, measuredAngle.vertex, measuredAngle.baseline),
+        getSnapPointOnLinePx(nextX, nextY, measuredAngle.vertex, measuredAngle.end)
+      ].filter((candidate): candidate is { x: number; y: number; distance: number } => Boolean(candidate));
+      const bestCandidate = candidates.sort((left, right) => left.distance - right.distance)[0];
+
+      if (bestCandidate && bestCandidate.distance <= 18) {
+        nextX = Math.round(bestCandidate.x);
+        nextY = Math.round(bestCandidate.y);
+      }
+    }
 
     return {
       x: nextX,
@@ -3789,18 +3876,23 @@ export function MathWorkbook() {
     setCanvasQuickMenu(null);
     setOpenMenu(null);
     setActiveGeometryTool((current) => {
+      const shouldClearPersistedProtractor = tool === "protractor" && current !== "protractor" && Boolean(geometryAngleMeasurement);
       const nextValue = current === tool ? null : tool;
 
       if (!nextValue) {
         clearGeometryDraftState();
         setGeometryMeasurement(null);
-        setGeometryAngleMeasurement(null);
+        if (tool === "protractor") {
+          setGeometryAngleMeasurement(null);
+        }
       } else {
         setGeometryDraft(null);
         setGeometryProtractorDraft(null);
         setSnapGuides({ x: null, y: null });
         setGeometryMeasurement(null);
-        setGeometryAngleMeasurement(null);
+        if (shouldClearPersistedProtractor) {
+          setGeometryAngleMeasurement(null);
+        }
         collapseToolsPanelForTablet();
       }
 
@@ -3851,7 +3943,6 @@ export function MathWorkbook() {
 
     if (tool === "point") {
       setGeometryMeasurement(null);
-      setGeometryAngleMeasurement(null);
       const pointShape = createGeometryShapeFromDraft({
         tool,
         start: { xMm: snappedPoint.xMm, yMm: snappedPoint.yMm },
@@ -3871,8 +3962,6 @@ export function MathWorkbook() {
       if (tool === "measure") {
         setGeometryMeasurement(null);
       }
-
-      setGeometryAngleMeasurement(null);
 
       setGeometryDraft({
         tool,
@@ -6988,13 +7077,13 @@ export function MathWorkbook() {
                 <button
                   key={tool.id}
                   type="button"
-                  className={`toolbar-shortcut toolbar-shortcut-symbol ${activeGeometryTool === tool.id ? "toolbar-shortcut-active" : ""}`}
+                  className={`toolbar-shortcut toolbar-shortcut-symbol sheet-tool-button ${activeGeometryTool === tool.id ? "toolbar-shortcut-active sheet-tool-button-active" : ""}`}
                   aria-label={tool.label}
                   aria-pressed={activeGeometryTool === tool.id}
                   title={tool.hint}
                   onClick={() => toggleGeometryTool(tool.id)}
                 >
-                  {tool.glyph}
+                  {renderGeometryToolGlyph(tool)}
                 </button>
               ))}
             </div>
@@ -7273,7 +7362,7 @@ export function MathWorkbook() {
             >
             <div className="document-canvas-stage">
               <div
-                className={`document-canvas document-canvas-${state.sheetStyle} ${isCanvasDropActive ? "document-canvas-drop-active" : ""} ${isCanvasInteracting ? "document-canvas-interacting" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || activeGeometryTool ? "document-canvas-draw-mode" : ""} ${advancedTool === "highlight" ? "document-canvas-highlight-mode" : ""} ${pendingInsertTool ? "document-canvas-insert-mode" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "select" || advancedTool === "move" || pendingInsertTool || activeGeometryTool ? "document-canvas-touch-locked" : ""}`}
+                className={`document-canvas document-canvas-${state.sheetStyle} ${isCanvasDropActive ? "document-canvas-drop-active" : ""} ${isCanvasInteracting ? "document-canvas-interacting" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || activeGeometryTool ? "document-canvas-draw-mode" : ""} ${advancedTool === "highlight" ? "document-canvas-highlight-mode" : ""} ${activeGeometryTool === "protractor" ? "document-canvas-protractor-mode" : ""} ${pendingInsertTool ? "document-canvas-insert-mode" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "select" || advancedTool === "move" || pendingInsertTool || activeGeometryTool ? "document-canvas-touch-locked" : ""}`}
                 style={{ "--canvas-type-size": `${getDefaultCanvasFontSize(state.sheetStyle)}rem`, ["zoom" as string]: state.zoomPercent / 100 } as ReactCSSProperties}
                 ref={canvasRef}
                 onDragOver={handleCanvasDragOver}
@@ -7439,6 +7528,28 @@ export function MathWorkbook() {
               >
                 {geometryDraftIndicator.label}
               </div>
+            ) : null}
+
+            {activeGeometryTool ? (
+              <div
+                className="canvas-geometry-tool-capture"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleGeometrySurfacePointer(event.clientX, event.clientY);
+                }}
+                onTouchStart={(event) => {
+                  const touch = event.touches[0];
+
+                  if (!touch) {
+                    return;
+                  }
+
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleGeometrySurfacePointer(touch.clientX, touch.clientY);
+                }}
+              />
             ) : null}
 
             <svg
