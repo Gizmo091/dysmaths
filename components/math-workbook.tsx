@@ -472,12 +472,12 @@ const SHEET_STYLE_OPTIONS = [
 ] as const;
 
 const STRUCTURED_TOOLS = [
-  { id: "fraction" as const, label: "Fraction posée", hint: "Numérateur au-dessus, dénominateur en dessous", modes: ["college", "lycee"] as StudyMode[] },
-  { id: "addition" as const, label: "Addition posée", hint: "Deux termes alignés et un résultat", modes: ["college", "lycee"] as StudyMode[] },
-  { id: "subtraction" as const, label: "Soustraction posée", hint: "Deux termes alignés et un résultat", modes: ["college", "lycee"] as StudyMode[] },
-  { id: "multiplication" as const, label: "Multiplication posée", hint: "Deux facteurs alignés et un résultat", modes: ["college", "lycee"] as StudyMode[] },
-  { id: "division" as const, label: "Division posée", hint: "Diviseur, dividende, quotient et reste", modes: ["college", "lycee"] as StudyMode[] },
-  { id: "power" as const, label: "Puissance", hint: "Base, exposant et résultat", modes: ["college", "lycee"] as StudyMode[] },
+  { id: "fraction" as const, label: "Fraction posée", hint: "Fraction posée", modes: ["college", "lycee"] as StudyMode[] },
+  { id: "addition" as const, label: "Addition posée", hint: "Addition posée", modes: ["college", "lycee"] as StudyMode[] },
+  { id: "subtraction" as const, label: "Soustraction posée", hint: "Soustraction posée", modes: ["college", "lycee"] as StudyMode[] },
+  { id: "multiplication" as const, label: "Multiplication posée", hint: "Multiplication posée", modes: ["college", "lycee"] as StudyMode[] },
+  { id: "division" as const, label: "Division posée", hint: "Division posée", modes: ["college", "lycee"] as StudyMode[] },
+  { id: "power" as const, label: "Puissance", hint: "Puissance", modes: ["college", "lycee"] as StudyMode[] },
   { id: "root" as const, label: "Racine", hint: "Radicande et résultat", modes: ["college", "lycee"] as StudyMode[] }
 ] as const;
 
@@ -564,7 +564,7 @@ function renderStructuredToolGlyph(toolId: StructuredTool) {
   }
 
   if (toolId === "power") {
-    return "x²";
+    return "aⁿ";
   }
 
   return "√";
@@ -1769,6 +1769,8 @@ export function MathWorkbook() {
   const activeInlineShortcuts = useMemo(() => INLINE_SHORTCUT_GROUPS, []);
 
   const activeStructuredTools = useMemo(() => STRUCTURED_TOOLS, []);
+  const rootStructuredTool = useMemo(() => activeStructuredTools.find((tool) => tool.id === "root") ?? null, [activeStructuredTools]);
+  const operationStructuredTools = useMemo(() => activeStructuredTools.filter((tool) => tool.id !== "root"), [activeStructuredTools]);
   const textBoxShortcuts = useMemo(
     () =>
       activeInlineShortcuts.flatMap((group) =>
@@ -5484,7 +5486,7 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
           <div className="toolbar-row toolbar-row-secondary sidebar-block">
             <p className="sidebar-block-label">Opérations posées</p>
             <div className="toolbar-shortcut-group" aria-label="Outils d'insertion">
-              {activeStructuredTools.map((tool) => (
+              {operationStructuredTools.map((tool) => (
                 <button
                   key={tool.id}
                   type="button"
@@ -5512,6 +5514,27 @@ function createFloatingSymbol(shortcut: InlineShortcutItem, x: number, y: number
           <div className="toolbar-row toolbar-row-secondary sidebar-block">
             <p className="sidebar-block-label">Symboles courants</p>
             <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label="Raccourcis symboles courants">
+              {rootStructuredTool ? (
+                <button
+                  type="button"
+                  className={`toolbar-shortcut toolbar-shortcut-symbol ${pendingInsertTool?.kind === "structured" && pendingInsertTool.toolId === rootStructuredTool.id ? "toolbar-shortcut-active" : ""}`}
+                  aria-label={rootStructuredTool.label}
+                  aria-pressed={pendingInsertTool?.kind === "structured" && pendingInsertTool.toolId === rootStructuredTool.id}
+                  draggable
+                  title={rootStructuredTool.hint}
+                  onDragStart={(event) => handleToolDragStart({ kind: "structured", toolId: rootStructuredTool.id }, event)}
+                  onDragEnd={handleToolDragEnd}
+                  onClick={() => {
+                    if (shouldIgnoreToolbarClick()) {
+                      return;
+                    }
+
+                    togglePendingInsertTool({ kind: "structured", toolId: rootStructuredTool.id });
+                  }}
+                >
+                  {renderStructuredToolGlyph(rootStructuredTool.id)}
+                </button>
+              ) : null}
               {commonInlineShortcuts.map((shortcut) => (
                 <button
                   key={shortcut.id}
