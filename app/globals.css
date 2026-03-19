@@ -1648,6 +1648,40 @@ input {
   animation: division-caret-blink 1s steps(1, end) infinite;
 }
 
+.division-cell-target-no-caret::after {
+  display: none;
+}
+
+.addition-result-cell-editor {
+  position: relative;
+}
+
+.addition-result-cell-input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: transparent;
+  font: inherit;
+  line-height: 1;
+  text-align: center;
+  caret-color: transparent;
+  -webkit-text-fill-color: transparent;
+  opacity: 0;
+}
+
+.addition-result-cell-input:focus {
+  outline: none;
+}
+
+.addition-result-cell-input::selection {
+  background: transparent;
+}
+
 .division-cell-target.division-cell-struck,
 .division-cell-input-active.division-cell-input-struck {
   background-image: linear-gradient(

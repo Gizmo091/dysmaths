@@ -1895,6 +1895,58 @@ function getAlignedCaretCellIndex(value: string, columns: number, align: "start"
   return Math.max(0, Math.min(columns - 1, offset + caretPosition));
 }
 
+function getAlignedCellSelectionRange(
+  value: string,
+  columns: number,
+  align: "start" | "end",
+  cellIndex: number
+) {
+  const characters = Array.from(value);
+  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
+  const visualIndex = align === "end" ? columns - 1 - cellIndex : cellIndex;
+  const characterIndex = visualIndex - offset;
+
+  if (characterIndex < 0) {
+    return { start: 0, end: 0 };
+  }
+
+  if (characterIndex >= characters.length) {
+    return { start: characters.length, end: characters.length };
+  }
+
+  return { start: characterIndex, end: characterIndex + 1 };
+}
+
+function getAlignedCellCharacter(
+  value: string,
+  columns: number,
+  align: "start" | "end",
+  cellIndex: number
+) {
+  const characters = Array.from(value);
+  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
+  const visualIndex = align === "end" ? columns - 1 - cellIndex : cellIndex;
+  return characters[visualIndex - offset] ?? "";
+}
+
+function setAlignedCellCharacter(
+  value: string,
+  columns: number,
+  align: "start" | "end",
+  cellIndex: number,
+  nextCharacter: string
+) {
+  const characters = Array.from(value);
+  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
+  const visualIndex = align === "end" ? columns - 1 - cellIndex : cellIndex;
+  const cells = Array.from({ length: columns }, (_, index) => characters[index - offset] ?? "");
+
+  cells[visualIndex] = nextCharacter;
+
+  const nextValue = cells.join("");
+  return normalizeDivisionDecimalInput(nextValue.trimStart());
+}
+
 type DivisionCellRowOptions = {
   field?: string;
   struckCells?: string[];
@@ -2332,6 +2384,8 @@ export function MathWorkbook() {
   const blockInputRefs = useRef<Record<string, Record<string, HTMLInputElement | HTMLTextAreaElement | null>>>({});
   const selectedTextBoxMenuRef = useRef<HTMLDivElement | null>(null);
   const selectedGeometryMenuRef = useRef<HTMLDivElement | null>(null);
+  const pendingNumericSelectionRef = useRef<{ blockId: string; field: string; start: number; end: number } | null>(null);
+  const [activeResultCell, setActiveResultCell] = useState<{ blockId: string; cellIndex: number } | null>(null);
   const historyInitializedRef = useRef(false);
   const skipHistoryRef = useRef(false);
   const previousStateRef = useRef<WriterState>(cloneWriterState(createDefaultState()));
@@ -2905,6 +2959,7 @@ export function MathWorkbook() {
 
   useEffect(() => {
     if (!editingBlock) {
+      setActiveResultCell(null);
       return;
     }
 
@@ -2931,6 +2986,17 @@ export function MathWorkbook() {
       return;
     }
 
+    if (block && isColumnArithmeticBlock(block) && editingBlock.field === "result") {
+      const columns = getColumnArithmeticColumns(block);
+      const defaultCellIndex = Math.min(columns - 1, Array.from(block.result).length);
+
+      setActiveResultCell((current) =>
+        current?.blockId === block.id ? current : { blockId: block.id, cellIndex: defaultCellIndex }
+      );
+    } else {
+      setActiveResultCell((current) => (current ? null : current));
+    }
+
     const input = blockInputRefs.current[editingBlock.blockId]?.[editingBlock.field];
 
     if (!input) {
@@ -2944,11 +3010,17 @@ export function MathWorkbook() {
     const isArithmeticNumericField =
       block &&
       isColumnArithmeticBlock(block) &&
-      (editingBlock.field === "top" || editingBlock.field === "bottom" || editingBlock.field === "result");
+      (editingBlock.field === "top" || editingBlock.field === "bottom");
+    const isArithmeticResultField = block && isColumnArithmeticBlock(block) && editingBlock.field === "result";
     const isDivisionNumericField =
       block &&
       block.type === "division" &&
       (editingBlock.field === "dividend" || editingBlock.field === "divisor" || editingBlock.field === "quotient" || editingBlock.field.startsWith("work:"));
+
+    if (isArithmeticResultField) {
+      input.setSelectionRange(0, input.value.length);
+      return;
+    }
 
     if (isArithmeticNumericField || isDivisionNumericField) {
       let numericValue = "";
@@ -2964,6 +3036,13 @@ export function MathWorkbook() {
 
       const caretKey = `${editingBlock.blockId}:${editingBlock.field}`;
       const caretPosition = numericFieldCaretPositions[caretKey] ?? Array.from(numericValue).length;
+      const pendingSelection = pendingNumericSelectionRef.current;
+
+      if (pendingSelection && pendingSelection.blockId === editingBlock.blockId && pendingSelection.field === editingBlock.field) {
+        input.setSelectionRange(pendingSelection.start, pendingSelection.end);
+        pendingNumericSelectionRef.current = null;
+        return;
+      }
 
       input.setSelectionRange(caretPosition, caretPosition);
       return;
@@ -2974,7 +3053,7 @@ export function MathWorkbook() {
     }
 
     input.select();
-  }, [editingBlock, numericFieldCaretPositions, strikeModeBlockId]);
+  }, [activeResultCell, editingBlock, numericFieldCaretPositions, strikeModeBlockId]);
 
   useEffect(() => {
     const element = editorRef.current;
@@ -5258,6 +5337,36 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     );
   }
 
+  function activateNumericCellSelection(
+    blockId: string,
+    field: string,
+    value: string,
+    columns: number,
+    align: "start" | "end",
+    cellIndex: number
+  ) {
+    const selection = getAlignedCellSelectionRange(value, columns, align, cellIndex);
+    const caretKey = `${blockId}:${field}`;
+    pendingNumericSelectionRef.current = { blockId, field, start: selection.start, end: selection.end };
+    updateNumericCaretPosition(caretKey, selection.start);
+    setEditingBlock({ blockId, field });
+  }
+
+  function activateResultCell(
+    blockId: string,
+    value: string,
+    columns: number,
+    cellIndex: number
+  ) {
+    const nextCellIndex = Math.max(0, Math.min(columns - 1, cellIndex));
+    const selection = getAlignedCellSelectionRange(value, columns, "end", nextCellIndex);
+    const caretKey = `${blockId}:result`;
+
+    setActiveResultCell({ blockId, cellIndex: nextCellIndex });
+    updateNumericCaretPosition(caretKey, selection.start);
+    setEditingBlock({ blockId, field: "result" });
+  }
+
   function markInlineBlockInteraction(blockId: string) {
     recentInlineBlockInteractionRef.current = { blockId, timeStamp: Date.now() };
   }
@@ -6282,11 +6391,194 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
         value: string,
         displayClassName: string
       ) => {
+        if (field === "result") {
+          const isActive = currentField === field;
+          const activeCellIndex = isActive && activeResultCell?.blockId === arithmeticBlock.id ? activeResultCell.cellIndex : null;
+          const commitResultCell = (cellIndex: number, nextCharacter: string, move: "stay" | "left" | "right" = "left") => {
+            const nextValue = setAlignedCellCharacter(value, columns, "end", cellIndex, nextCharacter);
+            updateInlineBlockField(arithmeticBlock.id, field, nextValue);
+
+            const nextCellIndex =
+              move === "left"
+                ? Math.min(columns - 1, cellIndex + 1)
+                : move === "right"
+                  ? Math.max(0, cellIndex - 1)
+                  : cellIndex;
+
+            activateResultCell(arithmeticBlock.id, nextValue, columns, nextCellIndex);
+          };
+
+          return (
+            <div
+              className={`addition-number-field ${isActive ? "addition-number-field-active" : ""}`}
+              style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}
+            >
+              <div className={`division-cell-row ${displayClassName} addition-number-display ${isStrikeModeActive ? "addition-number-display-strike-mode" : ""}`}>
+                {Array.from({ length: columns }).map((_, visualIndex) => {
+                  const cellIndex = columns - 1 - visualIndex;
+                  const cellValue = getAlignedCellCharacter(value, columns, "end", cellIndex);
+                  const isCellActive = isActive && activeCellIndex === cellIndex;
+                  const isStruck = hasStruckCell(arithmeticBlock.struckCells, field, cellIndex);
+                  const cellClassName = `division-cell ${isCellActive ? "division-cell-target division-cell-target-no-caret" : ""} ${isStruck ? "division-cell-struck" : ""} division-cell-button`;
+
+                  return (
+                    <div key={visualIndex} className={`addition-result-cell-editor ${isCellActive ? "addition-result-cell-editor-active" : ""}`}>
+                      <button
+                        type="button"
+                        className={cellClassName}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+
+                          if (isStrikeModeActive) {
+                            if (!cellValue.trim()) {
+                              return;
+                            }
+
+                            toggleInlineBlockCellStrike(arithmeticBlock.id, field, cellIndex);
+                            return;
+                          }
+
+                          activateResultCell(arithmeticBlock.id, value, columns, cellIndex);
+                        }}
+                        onTouchStart={(event) => {
+                          event.stopPropagation();
+
+                          if (isStrikeModeActive) {
+                            if (!cellValue.trim()) {
+                              return;
+                            }
+
+                            toggleInlineBlockCellStrike(arithmeticBlock.id, field, cellIndex);
+                            return;
+                          }
+
+                          activateResultCell(arithmeticBlock.id, value, columns, cellIndex);
+                        }}
+                      >
+                        {cellValue}
+                      </button>
+                      {isCellActive && !isStrikeModeActive ? (
+                        <input
+                          ref={(node) => {
+                            blockInputRefs.current[arithmeticBlock.id] = {
+                              ...blockInputRefs.current[arithmeticBlock.id],
+                              [field]: node
+                            };
+                          }}
+                          value={cellValue}
+                          inputMode="decimal"
+                          pattern="[0-9,]*"
+                          maxLength={1}
+                          className="addition-result-cell-input"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck={false}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onFocus={() => activateResultCell(arithmeticBlock.id, value, columns, cellIndex)}
+                          onBlur={(event) => {
+                            const nextTarget = event.relatedTarget as Node | null;
+
+                            if (nextTarget && blockNodeRefs.current[arithmeticBlock.id]?.contains(nextTarget)) {
+                              return;
+                            }
+
+                            setTimeout(() => {
+                              if (shouldKeepInlineBlockEditing(arithmeticBlock.id)) {
+                                return;
+                              }
+
+                              if (strikeModeBlockIdRef.current === arithmeticBlock.id) {
+                                return;
+                              }
+
+                              const latestEditingBlock = editingBlockRef.current;
+
+                              if (latestEditingBlock?.blockId === arithmeticBlock.id && latestEditingBlock.field === field) {
+                                finishBlockEditing(arithmeticBlock.id);
+                              }
+                            }, 0);
+                          }}
+                          onChange={(event) => {
+                            const nextCharacter = normalizeDivisionDecimalInput(event.target.value).slice(-1);
+
+                            if (nextCharacter.length === 0) {
+                              return;
+                            }
+
+                            commitResultCell(cellIndex, nextCharacter);
+                          }}
+                          onKeyDown={(event) => {
+                            const isDigit = /^[0-9]$/.test(event.key);
+                            const isComma = event.key === ",";
+
+                            if (isDigit || isComma) {
+                              event.preventDefault();
+                              commitResultCell(cellIndex, event.key);
+                              return;
+                            }
+
+                            if (event.key === "Backspace") {
+                              event.preventDefault();
+
+                              if (cellValue.trim().length > 0) {
+                                commitResultCell(cellIndex, "", "stay");
+                                return;
+                              }
+
+                              if (cellIndex > 0) {
+                                const previousCellIndex = cellIndex - 1;
+                                const previousValue = setAlignedCellCharacter(value, columns, "end", previousCellIndex, "");
+                                updateInlineBlockField(arithmeticBlock.id, field, previousValue);
+                                activateResultCell(arithmeticBlock.id, previousValue, columns, previousCellIndex);
+                              }
+                              return;
+                            }
+
+                            if (event.key === "Delete") {
+                              event.preventDefault();
+                              commitResultCell(cellIndex, "", "stay");
+                              return;
+                            }
+
+                            if (event.key === "ArrowLeft") {
+                              event.preventDefault();
+                              activateResultCell(arithmeticBlock.id, value, columns, Math.min(columns - 1, cellIndex + 1));
+                              return;
+                            }
+
+                            if (event.key === "ArrowRight") {
+                              event.preventDefault();
+                              activateResultCell(arithmeticBlock.id, value, columns, Math.max(0, cellIndex - 1));
+                              return;
+                            }
+
+                            if (event.key === "Tab" || event.key === "Enter") {
+                              handleInlineBlockKeyDown(arithmeticBlock.id, field, event);
+                              return;
+                            }
+
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              finishBlockEditing(arithmeticBlock.id);
+                            }
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
         const isActive = currentField === field;
         const caretKey = `${arithmeticBlock.id}:${field}`;
         const caretPosition = numericFieldCaretPositions[caretKey] ?? Array.from(value).length;
-        const targetCellIndex = getAlignedCaretCellIndex(value, columns, "end", caretPosition);
         const baseInputProps = bindInlineInput(field);
+        const targetCellIndex = getAlignedCaretCellIndex(value, columns, "end", caretPosition);
 
         return (
           <div
@@ -6311,6 +6603,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               onSelect={(event) => {
                 updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
               }}
+              onKeyDown={baseInputProps.onKeyDown}
               onChange={(event) => {
                 const nextValue = normalizeDivisionDecimalInput(event.target.value);
                 updateInlineBlockField(arithmeticBlock.id, field, nextValue);
@@ -6326,15 +6619,18 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               {
                 field,
                 struckCells: arithmeticBlock.struckCells,
-                onCellToggle: isStrikeModeActive
-                  ? (cellIndex, cellValue) => {
-                      if (!cellValue.trim()) {
-                        return;
-                      }
+                onCellToggle: (cellIndex, cellValue) => {
+                  if (!isStrikeModeActive) {
+                    activateNumericCellSelection(arithmeticBlock.id, field, value, columns, "end", cellIndex);
+                    return;
+                  }
 
-                      toggleInlineBlockCellStrike(arithmeticBlock.id, field, cellIndex);
-                    }
-                  : undefined
+                  if (!cellValue.trim()) {
+                    return;
+                  }
+
+                  toggleInlineBlockCellStrike(arithmeticBlock.id, field, cellIndex);
+                }
               }
             )}
           </div>
@@ -6612,15 +6908,18 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               {
                 field,
                 struckCells: block.struckCells,
-                onCellToggle: isStrikeModeActive
-                  ? (cellIndex, cellValue) => {
-                      if (!cellValue.trim()) {
-                        return;
-                      }
+                onCellToggle: (cellIndex, cellValue) => {
+                  if (!isStrikeModeActive) {
+                    activateNumericCellSelection(block.id, field, value, columns, "end", cellIndex);
+                    return;
+                  }
 
-                      toggleInlineBlockCellStrike(block.id, field, cellIndex);
-                    }
-                  : undefined
+                  if (!cellValue.trim()) {
+                    return;
+                  }
+
+                  toggleInlineBlockCellStrike(block.id, field, cellIndex);
+                }
               }
             )}
           </div>
@@ -6679,15 +6978,18 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               {
                 field,
                 struckCells: block.struckCells,
-                onCellToggle: isStrikeModeActive
-                  ? (cellIndex, cellValue) => {
-                      if (!cellValue.trim()) {
-                        return;
-                      }
+                onCellToggle: (cellIndex, cellValue) => {
+                  if (!isStrikeModeActive) {
+                    activateNumericCellSelection(block.id, field, value, columns, align, cellIndex);
+                    return;
+                  }
 
-                      toggleInlineBlockCellStrike(block.id, field, cellIndex);
-                    }
-                  : undefined
+                  if (!cellValue.trim()) {
+                    return;
+                  }
+
+                  toggleInlineBlockCellStrike(block.id, field, cellIndex);
+                }
               }
             )}
           </div>
