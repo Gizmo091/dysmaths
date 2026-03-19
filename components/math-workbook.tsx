@@ -6154,7 +6154,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
 
     return (
       <div className="math-layout addition-layout">
-        <div className="addition-preview">
+        <div className="addition-preview addition-preview-compact">
           <div className={`addition-line-stack ${topCarryOverlay ? "addition-line-stack-with-carry" : ""}`}>
             {topCarryOverlay ? <div className="addition-line-carry-overlay">{topCarryOverlay}</div> : null}
             <div className="addition-line">
@@ -6207,13 +6207,13 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       const workLines = getDivisionVisibleWorkLines(block.work, block.quotient);
       return (
         <div className="math-layout division-layout">
-        <div className="division-preview">
-            <div className="division-left-column">
+          <div className="division-preview division-preview-compact">
+            <div className="division-left-column division-left-column-compact">
               <div className="division-work-line division-work-line-head">
                 <span className="division-work-minus division-work-minus-spacer" aria-hidden="true" />
                 {renderBlockPreviewButton(block.id, "dividend", renderDivisionCellRow(block.dividend, leftColumns, "division-dividend division-row-preview", "start", undefined, { field: "dividend", struckCells: block.struckCells }), "division-row-button")}
               </div>
-              <div className="division-work-grid">
+              <div className="division-work-grid division-work-grid-compact">
                 {workLines.map((line, index) => (
                   (() => {
                     if (index % 2 === 0 && line.trim().length === 0) {
