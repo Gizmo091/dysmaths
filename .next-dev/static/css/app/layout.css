@@ -1598,7 +1598,7 @@ input {
 
 .division-work-line-operation-complete .division-workpad,
 .division-work-line-operation-complete .division-cell-row {
-  border-bottom: 4px solid currentColor;
+  border-bottom: 2px solid currentColor;
   padding-bottom: 0.26rem;
 }
 
@@ -1769,7 +1769,8 @@ input {
 
 .division-quotient {
   justify-self: start;
-  padding: 0.34rem 0.24rem 0 0;
+  margin-left: -0.56rem;
+  padding: 0.34rem 0.24rem 0 0.56rem;
   border-top: 3px solid currentColor;
 }
 
@@ -1780,7 +1781,8 @@ input {
   justify-self: start;
   width: calc((var(--division-columns) * var(--division-cell-size)) + ((var(--division-columns) - 1) * var(--division-cell-gap)));
   height: var(--division-cell-size);
-  padding: 0 0.24rem 0 0;
+  margin-left: -0.56rem;
+  padding: 0 0.24rem 0 0.56rem;
   border: none;
   border-top: 3px solid currentColor;
   background: transparent;
