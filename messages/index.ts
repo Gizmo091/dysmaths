@@ -24,6 +24,7 @@ type Messages = {
       geometry: string;
       geometryGroup: string;
       structuredOperations: string;
+      graduatedLine: string;
       insertionTools: string;
       commonSymbols: string;
       commonSymbolShortcuts: string;
@@ -87,6 +88,9 @@ type Messages = {
     modal: {
       guidedBlock: string;
       guidedBlockHelper: string;
+      graduatedLine: string;
+      graduatedLineHelper: string;
+      graduatedLinePresets: string;
       cancel: string;
       insert: string;
       save: string;
@@ -112,6 +116,8 @@ type Messages = {
       base: string;
       exponent: string;
       radicand: string;
+      startAt: string;
+      sections: string;
       fractionNotePlaceholder: string;
       divisionNotePlaceholder: string;
       additionNotePlaceholder: string;
@@ -210,6 +216,7 @@ const en: Messages = {
       geometry: "Geometry",
       geometryGroup: "Geometry tools",
       structuredOperations: "Written operations",
+      graduatedLine: "Graduated line",
       insertionTools: "Insertion tools",
       commonSymbols: "Common symbols",
       commonSymbolShortcuts: "Common symbol shortcuts",
@@ -273,6 +280,9 @@ const en: Messages = {
     modal: {
       guidedBlock: "Guided block",
       guidedBlockHelper: "Prepare the block, then place it freely on the sheet.",
+      graduatedLine: "Graduated line",
+      graduatedLineHelper: "Draw a line, then choose how many sections to divide it into.",
+      graduatedLinePresets: "Quick choices",
       cancel: "Cancel",
       insert: "Insert",
       save: "Save",
@@ -298,6 +308,8 @@ const en: Messages = {
       base: "Base",
       exponent: "Exponent",
       radicand: "Radicand",
+      startAt: "Start at",
+      sections: "Sections",
       fractionNotePlaceholder: "I simplify the fraction",
       divisionNotePlaceholder: "I check with 35 × 7",
       additionNotePlaceholder: "I write the addition",
@@ -405,6 +417,7 @@ const fr: Messages = {
       geometry: "Géométrie",
       geometryGroup: "Outils de géométrie",
       structuredOperations: "Opérations posées",
+      graduatedLine: "Droite graduée",
       insertionTools: "Outils d'insertion",
       commonSymbols: "Symboles courants",
       commonSymbolShortcuts: "Raccourcis symboles courants",
@@ -468,6 +481,9 @@ const fr: Messages = {
     modal: {
       guidedBlock: "Bloc guidé",
       guidedBlockHelper: "Prépare le bloc, puis place-le librement sur la feuille.",
+      graduatedLine: "Droite graduée",
+      graduatedLineHelper: "Trace une droite, puis choisis en combien de sections la diviser.",
+      graduatedLinePresets: "Choix rapides",
       cancel: "Annuler",
       insert: "Insérer",
       save: "Enregistrer",
@@ -493,6 +509,8 @@ const fr: Messages = {
       base: "Base",
       exponent: "Exposant",
       radicand: "Radicande",
+      startAt: "Commencer à",
+      sections: "Nombre de sections",
       fractionNotePlaceholder: "Je simplifie la fraction",
       divisionNotePlaceholder: "Je vérifie avec 35 × 7",
       additionNotePlaceholder: "Je pose l'addition",
@@ -600,6 +618,7 @@ const es: Messages = {
       geometry: "Geometría",
       geometryGroup: "Herramientas de geometría",
       structuredOperations: "Operaciones escritas",
+      graduatedLine: "Recta graduada",
       insertionTools: "Herramientas de inserción",
       commonSymbols: "Símbolos frecuentes",
       commonSymbolShortcuts: "Atajos de símbolos frecuentes",
@@ -663,6 +682,9 @@ const es: Messages = {
     modal: {
       guidedBlock: "Bloque guiado",
       guidedBlockHelper: "Prepara el bloque y luego colócalo libremente sobre la hoja.",
+      graduatedLine: "Recta graduada",
+      graduatedLineHelper: "Traza una recta y elige en cuántas secciones dividirla.",
+      graduatedLinePresets: "Opciones rápidas",
       cancel: "Cancelar",
       insert: "Insertar",
       save: "Guardar",
@@ -688,6 +710,8 @@ const es: Messages = {
       base: "Base",
       exponent: "Exponente",
       radicand: "Radicando",
+      startAt: "Empezar en",
+      sections: "Secciones",
       fractionNotePlaceholder: "Simplifico la fracción",
       divisionNotePlaceholder: "Compruebo con 35 × 7",
       additionNotePlaceholder: "Escribo la suma",

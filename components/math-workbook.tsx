@@ -231,11 +231,13 @@ type GeometryPointShape = {
 type GeometryLinearShape = {
   id: string;
   type: "geometry";
-  kind: "segment" | "line" | "ray";
+  kind: "segment" | "line" | "ray" | "graduated-line";
   axMm: number;
   ayMm: number;
   bxMm: number;
   byMm: number;
+  startValue?: number;
+  sections?: number;
   color: string;
   strokeWidthMm: number;
 };
@@ -264,8 +266,13 @@ type GeometryArcShape = {
   strokeWidthMm: number;
 };
 
+type GraduatedLineModalShape = GeometryLinearShape & {
+  kind: "graduated-line";
+  sections: number;
+};
+
 type MathBlock = FractionBlock | AdditionBlock | SubtractionBlock | MultiplicationBlock | DivisionBlock | PowerBlock | RootBlock;
-type GeometryShape = GeometryPointShape | GeometryLinearShape | GeometryCircleShape | GeometryArcShape;
+type GeometryShape = GeometryPointShape | GeometryLinearShape | GeometryCircleShape | GeometryArcShape | GraduatedLineModalShape;
 
 type WriterState = {
   schemaVersion: number;
@@ -288,6 +295,23 @@ type ModalState =
       block: MathBlock;
     }
   | null;
+
+type GraduatedLineDraft = {
+  start: GeometryPointCoordinate;
+  current: GeometryPointCoordinate;
+};
+
+type GraduatedLineModalState = {
+  start: GeometryPointCoordinate;
+  end: GeometryPointCoordinate;
+  startValue: string;
+  sections: string;
+} | null;
+
+type GraduatedLineModalSettings = {
+  startValue: string;
+  sections: string;
+} | null;
 
 type ConfirmResetState = {
   open: boolean;
@@ -468,7 +492,7 @@ type SnapGuides = {
   y: number | null;
 };
 
-type AdvancedTool = "select" | "move" | "note" | "draw" | "highlight" | null;
+type AdvancedTool = "select" | "move" | "note" | "draw" | "highlight" | "graduated-line" | null;
 type SymbolResizeHandle = "nw" | "se";
 type SymbolResizeState = {
   symbolId: string;
@@ -646,6 +670,8 @@ const HIGHLIGHT_OPTION_VALUES = [
   { id: "blue", value: "rgb(160 208 255)" },
   { id: "pink", value: "rgb(255 184 210)" }
 ] as const;
+
+const GRADUATED_LINE_PRESET_VALUES = [2, 5, 10, 20, 40] as const;
 
 const SHEET_STYLE_OPTION_IDS = [
   { id: "seyes", key: "seyes" },
@@ -858,6 +884,20 @@ function renderGeometryToolGlyph(tool: Pick<GeometryToolOption, "id" | "glyph">)
         <path d="M50 50L50 18" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
         <path d="M26 50L31 36" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
         <path d="M74 50L69 36" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
+
+function renderGraduatedLineGlyph() {
+  return (
+    <span className="geometry-tool-graduated-line-glyph" aria-hidden="true">
+      <svg viewBox="0 0 100 40" focusable="false">
+        <path d="M14 20H86" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+        <path d="M24 28V10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+        <path d="M44 30V8" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
+        <path d="M64 28V10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+        <path d="M84 30V6" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
       </svg>
     </span>
   );
@@ -1230,7 +1270,7 @@ function getRenderedLinearGeometryPx(shape: GeometryLinearShape, canvasWidth: nu
   const bx = mmToPx(shape.bxMm);
   const by = mmToPx(shape.byMm);
 
-  if (shape.kind === "segment") {
+  if (shape.kind === "segment" || shape.kind === "graduated-line") {
     return { x1: ax, y1: ay, x2: bx, y2: by };
   }
 
@@ -1343,7 +1383,7 @@ function getGeometryShapeBoundsPx(shape: GeometryShape, canvasWidth: number, can
     };
   }
 
-  const rendered = getRenderedLinearGeometryPx(shape, canvasWidth, canvasHeight);
+  const rendered = getRenderedLinearGeometryPx(shape as GeometryLinearShape | GraduatedLineModalShape, canvasWidth, canvasHeight);
 
   if (!rendered) {
     const x = mmToPx(shape.axMm);
@@ -1394,7 +1434,7 @@ function translateGeometryShape(shape: GeometryShape, deltaXMm: number, deltaYMm
 }
 
 function getGeometrySelectionMeasurement(shape: GeometryShape) {
-  if (shape.kind === "segment") {
+  if (shape.kind === "segment" || shape.kind === "graduated-line") {
     return `${Math.round(Math.hypot(shape.bxMm - shape.axMm, shape.byMm - shape.ayMm))} mm`;
   }
 
@@ -1403,6 +1443,93 @@ function getGeometrySelectionMeasurement(shape: GeometryShape) {
   }
 
   return null;
+}
+
+function getGraduatedLineSectionCount(value: string) {
+  const parsed = Number.parseInt(value.replace(/[^0-9]/g, ""), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return 10;
+  }
+
+  return Math.max(1, Math.min(200, parsed));
+}
+
+function getGraduatedLineStartValue(value: string) {
+  const parsed = Number.parseInt(value.replace(/[^0-9-]/g, ""), 10);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getGraduatedLineEndpointLabel(shape: GeometryLinearShape, index: number) {
+  const sections = Math.max(1, Math.round(shape.sections ?? 10));
+  const startValue = Math.round(shape.startValue ?? 0);
+  return index === 0 ? startValue : startValue + sections;
+}
+
+function getGraduatedLineTickLengthPx(index: number, sections: number) {
+  if (index === 0 || index === sections || index % 10 === 0) {
+    return 18;
+  }
+
+  if (index % 5 === 0) {
+    return 12;
+  }
+
+  return 8;
+}
+
+function getGraduatedLineTickStrokeWidth(index: number, sections: number) {
+  if (index === 0 || index === sections || index % 10 === 0) {
+    return 2;
+  }
+
+  if (index % 5 === 0) {
+    return 1.6;
+  }
+
+  return 1.2;
+}
+
+function getGraduatedLineDraftNormal(ax: number, ay: number, bx: number, by: number) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const length = Math.hypot(dx, dy) || 1;
+
+  return {
+    ux: dx / length,
+    uy: dy / length,
+    nx: dy / length,
+    ny: -dx / length
+  };
+}
+
+function getGraduatedLineTickPath(ax: number, ay: number, bx: number, by: number, index: number, sections: number) {
+  const progress = sections <= 0 ? 0 : index / sections;
+  const baseX = ax + (bx - ax) * progress;
+  const baseY = ay + (by - ay) * progress;
+  const { nx, ny } = getGraduatedLineDraftNormal(ax, ay, bx, by);
+  const length = getGraduatedLineTickLengthPx(index, sections);
+
+  return {
+    x1: baseX,
+    y1: baseY,
+    x2: baseX + nx * length,
+    y2: baseY + ny * length,
+    strokeWidth: getGraduatedLineTickStrokeWidth(index, sections)
+  };
+}
+
+function getGraduatedLineRenderTicks(shape: GeometryLinearShape, canvasWidth: number, canvasHeight: number) {
+  const rendered = getRenderedLinearGeometryPx(shape, canvasWidth, canvasHeight);
+
+  if (!rendered) {
+    return [];
+  }
+
+  const sections = Math.max(1, Math.round(shape.sections ?? 10));
+
+  return Array.from({ length: sections + 1 }, (_, index) => getGraduatedLineTickPath(rendered.x1, rendered.y1, rendered.x2, rendered.y2, index, sections));
 }
 
 function getGeometryAngleDegrees(vertex: GeometryPointCoordinate, baseline: GeometryPointCoordinate, end: GeometryPointCoordinate) {
@@ -1722,6 +1849,15 @@ function parseStoredState(raw: string, fallbackSheetStyle: SheetStyle, labels: D
               ) {
                 accumulator.push({
                   ...shape,
+                  startValue: typeof (shape as { startValue?: unknown }).startValue === "number" ? (shape as { startValue: number }).startValue : 0,
+                  sections:
+                    shape.kind === "graduated-line"
+                      ? typeof (shape as { sections?: unknown }).sections === "number"
+                        ? Math.max(1, Math.round((shape as { sections: number }).sections))
+                        : 10
+                      : typeof (shape as { sections?: unknown }).sections === "number"
+                        ? (shape as { sections: number }).sections
+                        : undefined,
                   color: typeof shape.color === "string" ? shape.color : DEFAULT_ACTIVE_COLOR,
                   strokeWidthMm: typeof shape.strokeWidthMm === "number" ? shape.strokeWidthMm : DEFAULT_GEOMETRY_STROKE_WIDTH_MM
                 } satisfies GeometryLinearShape);
@@ -2502,6 +2638,10 @@ export function MathWorkbook() {
   const [insertCursorPreview, setInsertCursorPreview] = useState<InsertCursorPreview>({ x: 0, y: 0, visible: false });
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
   const [draftStroke, setDraftStroke] = useState<FreehandPoint[] | null>(null);
+  const [graduatedLineDraft, setGraduatedLineDraft] = useState<GraduatedLineDraft | null>(null);
+  const [graduatedLineModalState, setGraduatedLineModalState] = useState<GraduatedLineModalState>(null);
+  const [graduatedLineModalSettings, setGraduatedLineModalSettings] = useState<GraduatedLineModalSettings>(null);
+  const [selectedGraduatedLineSettings, setSelectedGraduatedLineSettings] = useState<{ startValue: string; sections: string } | null>(null);
   const [canvasQuickMenu, setCanvasQuickMenu] = useState<CanvasQuickMenu>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuides>({ x: null, y: null });
   const [selectedTextBoxMenuPosition, setSelectedTextBoxMenuPosition] = useState<{ x: number; y: number; placement: "above" | "below" } | null>(null);
@@ -2536,6 +2676,12 @@ export function MathWorkbook() {
     width: 2.6,
     opacity: 1
   });
+  const graduatedLineDraftRef = useRef<GraduatedLineDraft | null>(null);
+  const graduatedLineModalStateRef = useRef<GraduatedLineModalState>(null);
+  const graduatedLineModalSettingsRef = useRef<GraduatedLineModalSettings>(null);
+  const selectedGraduatedLineSettingsRef = useRef<{ startValue: string; sections: string } | null>(null);
+  const lastGraduatedLineSectionsRef = useRef(10);
+  const graduatedLineMenuSuppressedIdRef = useRef<string | null>(null);
   const toolbarDragUntilRef = useRef(0);
   const toolbarDragMetaRef = useRef<ToolbarDragMeta | null>(null);
   const advancedToolRef = useRef<AdvancedTool>(null);
@@ -2849,6 +2995,12 @@ export function MathWorkbook() {
       return;
     }
 
+    if (selectedGeometry.kind === "graduated-line" && graduatedLineMenuSuppressedIdRef.current === selectedGeometry.id) {
+      graduatedLineMenuSuppressedIdRef.current = null;
+      setSelectedGeometryMenuPosition(null);
+      return;
+    }
+
     const canvasNode = canvasRef.current;
     const geometryNode = geometryNodeRefs.current[selectedGeometry.id];
 
@@ -2980,6 +3132,33 @@ export function MathWorkbook() {
   }, [state]);
 
   useEffect(() => {
+    graduatedLineDraftRef.current = graduatedLineDraft;
+  }, [graduatedLineDraft]);
+
+  useEffect(() => {
+    graduatedLineModalStateRef.current = graduatedLineModalState;
+  }, [graduatedLineModalState]);
+
+  useEffect(() => {
+    graduatedLineModalSettingsRef.current = graduatedLineModalSettings;
+  }, [graduatedLineModalSettings]);
+
+  useEffect(() => {
+    if (!selectedGeometry || selectedGeometry.kind !== "graduated-line") {
+      selectedGraduatedLineSettingsRef.current = null;
+      setSelectedGraduatedLineSettings(null);
+      return;
+    }
+
+    const nextSettings = {
+      startValue: String(selectedGeometry.startValue ?? 0),
+      sections: String(selectedGeometry.sections ?? 10)
+    };
+    selectedGraduatedLineSettingsRef.current = nextSettings;
+    setSelectedGraduatedLineSettings(nextSettings);
+  }, [selectedGeometryId, selectedGeometry?.kind]);
+
+  useEffect(() => {
     advancedToolRef.current = advancedTool;
   }, [advancedTool]);
 
@@ -3047,6 +3226,19 @@ export function MathWorkbook() {
       }
 
       if (event.key === "Escape") {
+        if (graduatedLineModalStateRef.current) {
+          event.preventDefault();
+          cancelGraduatedLineModal();
+          return;
+        }
+
+        if (graduatedLineDraftRef.current) {
+          event.preventDefault();
+          clearGraduatedLineDraftState();
+          setIsCanvasInteracting(false);
+          return;
+        }
+
         if (geometryDraftRef.current) {
           event.preventDefault();
           clearGeometryDraftState();
@@ -3269,6 +3461,10 @@ export function MathWorkbook() {
         return;
       }
 
+      if (updateGraduatedLineDraft(clientX, clientY)) {
+        return;
+      }
+
       if (isDrawingStrokeRef.current) {
         const point = getCanvasPoint(clientX, clientY);
         const currentPoints = draftStrokeRef.current;
@@ -3445,6 +3641,7 @@ export function MathWorkbook() {
     function handleTouchMove(event: TouchEvent) {
       if (
         !isDrawingStrokeRef.current &&
+        !graduatedLineDraftRef.current &&
         !pendingSelectionRef.current &&
         !dragRef.current &&
         !symbolResizeRef.current &&
@@ -3495,6 +3692,13 @@ export function MathWorkbook() {
           commitTransientHistorySession("edit");
         }
 
+        return;
+      }
+
+      if (graduatedLineDraftRef.current && !graduatedLineModalStateRef.current) {
+        isDrawingStrokeRef.current = false;
+        openGraduatedLineModal();
+        setIsCanvasInteracting(false);
         return;
       }
 
@@ -4226,8 +4430,9 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     setSelectedStrokeIds([]);
   }
 
-  function insertGeometryShape(shape: GeometryShape, options?: { selectAfterInsert?: boolean }) {
+  function insertGeometryShape(shape: GeometryShape, options?: { selectAfterInsert?: boolean; clearGeometryTool?: boolean }) {
     const selectAfterInsert = options?.selectAfterInsert ?? true;
+    const clearGeometryTool = options?.clearGeometryTool ?? true;
     beginTransientHistorySession("edit");
     setState((current) => ({
       ...current,
@@ -4237,8 +4442,10 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       selectSingleGeometry(shape.id);
     }
     setCanvasQuickMenu(null);
-    setActiveGeometryTool(null);
-    clearGeometryDraftState();
+    if (clearGeometryTool) {
+      setActiveGeometryTool(null);
+      clearGeometryDraftState();
+    }
     scheduleTransientHistoryCommit("edit");
   }
 
@@ -4273,6 +4480,147 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       color: stateRef.current.activeColor,
       strokeWidthMm: DEFAULT_GEOMETRY_STROKE_WIDTH_MM
     }, { selectAfterInsert: false });
+  }
+
+  function clearGraduatedLineDraftState() {
+    setGraduatedLineDraft(null);
+    setGraduatedLineModalState(null);
+    setGraduatedLineModalSettings(null);
+    setSnapGuides({ x: null, y: null });
+    graduatedLineModalStateRef.current = null;
+    graduatedLineModalSettingsRef.current = null;
+    graduatedLineDraftRef.current = null;
+  }
+
+  function createGraduatedLineShape(start: GeometryPointCoordinate, end: GeometryPointCoordinate, sections: number) {
+    return {
+      id: createId("geometry"),
+      type: "geometry",
+      kind: "graduated-line",
+      axMm: start.xMm,
+      ayMm: start.yMm,
+      bxMm: end.xMm,
+      byMm: end.yMm,
+      startValue: 0,
+      sections: Math.max(1, Math.round(sections)),
+      color: stateRef.current.activeColor,
+      strokeWidthMm: DEFAULT_GEOMETRY_STROKE_WIDTH_MM
+    } satisfies GraduatedLineModalShape;
+  }
+
+  function beginGraduatedLineDrawing(clientX: number, clientY: number) {
+    const snappedPoint = getGeometrySnapPoint(clientX, clientY);
+    setCanvasQuickMenu(null);
+    setOpenMenu(null);
+    clearFloatingSelection();
+    setIsCanvasInteracting(true);
+    setGraduatedLineModalState(null);
+    setGraduatedLineModalSettings(null);
+    const nextDraft = {
+      start: { xMm: snappedPoint.xMm, yMm: snappedPoint.yMm },
+      current: { xMm: snappedPoint.xMm, yMm: snappedPoint.yMm }
+    };
+    graduatedLineDraftRef.current = nextDraft;
+    setGraduatedLineDraft(nextDraft);
+    setSnapGuides(snappedPoint.guides);
+  }
+
+  function updateGraduatedLineDraft(clientX: number, clientY: number) {
+    if (!graduatedLineDraftRef.current || graduatedLineModalStateRef.current) {
+      return false;
+    }
+
+    const snappedPoint = getGeometrySnapPoint(clientX, clientY);
+    setGraduatedLineDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextDraft = {
+        ...current,
+        current: { xMm: snappedPoint.xMm, yMm: snappedPoint.yMm }
+      };
+      graduatedLineDraftRef.current = nextDraft;
+      return nextDraft;
+    });
+    setSnapGuides(snappedPoint.guides);
+    return true;
+  }
+
+  function openGraduatedLineModal() {
+    const draft = graduatedLineDraftRef.current;
+
+    if (!draft) {
+      return;
+    }
+
+    const distanceMm = Math.hypot(draft.current.xMm - draft.start.xMm, draft.current.yMm - draft.start.yMm);
+
+    if (distanceMm < 0.8) {
+      clearGraduatedLineDraftState();
+      return;
+    }
+
+    const nextSettings = {
+      startValue: "0",
+      sections: String(lastGraduatedLineSectionsRef.current)
+    };
+    graduatedLineModalSettingsRef.current = nextSettings;
+    setGraduatedLineModalSettings(nextSettings);
+    setGraduatedLineModalState({
+      start: draft.start,
+      end: draft.current,
+      ...nextSettings
+    });
+    graduatedLineDraftRef.current = null;
+    setGraduatedLineDraft(null);
+    setSnapGuides({ x: null, y: null });
+  }
+
+  function confirmGraduatedLineModal() {
+    const draft = graduatedLineModalStateRef.current;
+
+    if (!draft) {
+      return;
+    }
+
+    const settings = graduatedLineModalSettingsRef.current ?? {
+      startValue: draft.startValue,
+      sections: draft.sections
+    };
+    const sections = getGraduatedLineSectionCount(settings.sections);
+    const startValue = getGraduatedLineStartValue(settings.startValue);
+    lastGraduatedLineSectionsRef.current = sections;
+    const shape = createGraduatedLineShape(draft.start, draft.end, sections);
+    shape.startValue = startValue;
+    insertGeometryShape(shape, { clearGeometryTool: true });
+    graduatedLineMenuSuppressedIdRef.current = shape.id;
+    clearGraduatedLineDraftState();
+    setIsCanvasInteracting(false);
+  }
+
+  function cancelGraduatedLineModal() {
+    clearGraduatedLineDraftState();
+    setIsCanvasInteracting(false);
+  }
+
+  function updateGraduatedLineModalSections(value: string) {
+    const nextSettings = {
+      startValue: graduatedLineModalSettingsRef.current?.startValue ?? graduatedLineModalStateRef.current?.startValue ?? "0",
+      sections: value.replace(/[^0-9]/g, "")
+    };
+    graduatedLineModalSettingsRef.current = nextSettings;
+    setGraduatedLineModalSettings(nextSettings);
+  }
+
+  function selectGraduatedLinePreset(sections: number) {
+    const nextSettings = {
+      startValue: graduatedLineModalSettingsRef.current?.startValue ?? graduatedLineModalStateRef.current?.startValue ?? "0",
+      sections: String(Math.max(1, Math.round(sections)))
+    };
+    graduatedLineModalSettingsRef.current = nextSettings;
+    setGraduatedLineModalSettings(nextSettings);
+    lastGraduatedLineSectionsRef.current = Math.max(1, Math.round(sections));
   }
 
   function updateGeometryShape(shapeId: string, updater: (shape: GeometryShape) => GeometryShape) {
@@ -4340,6 +4688,54 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
         ? {
             ...shape,
             radiusMm: Math.max(1, nextRadiusMm)
+          }
+        : shape
+    );
+  }
+
+  function updateSelectedGraduatedLineSections(sections: string) {
+    if (!selectedGeometry || selectedGeometry.kind !== "graduated-line") {
+      return;
+    }
+
+    updateGeometryShape(selectedGeometry.id, (shape) =>
+      shape.kind === "graduated-line"
+        ? {
+            ...shape,
+            sections: getGraduatedLineSectionCount(sections)
+          }
+        : shape
+    );
+  }
+
+  function patchSelectedGraduatedLineSettings(patch: Partial<{ startValue: string; sections: string }>) {
+    if (!selectedGeometry || selectedGeometry.kind !== "graduated-line") {
+      return null;
+    }
+
+    const currentSettings = selectedGraduatedLineSettingsRef.current ?? {
+      startValue: String(selectedGeometry.startValue ?? 0),
+      sections: String(selectedGeometry.sections ?? 10)
+    };
+    const nextSettings = {
+      ...currentSettings,
+      ...patch
+    };
+    selectedGraduatedLineSettingsRef.current = nextSettings;
+    setSelectedGraduatedLineSettings(nextSettings);
+    return nextSettings;
+  }
+
+  function updateSelectedGraduatedLineStartValue(startValue: string) {
+    if (!selectedGeometry || selectedGeometry.kind !== "graduated-line") {
+      return;
+    }
+
+    updateGeometryShape(selectedGeometry.id, (shape) =>
+      shape.kind === "graduated-line"
+        ? {
+            ...shape,
+            startValue: getGraduatedLineStartValue(startValue)
           }
         : shape
     );
@@ -5815,6 +6211,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
   function resetTransientUi() {
     setOpenMenu(null);
     setModalState(null);
+    clearGraduatedLineDraftState();
     setCanvasQuickMenu(null);
     setEditingBlock(null);
     setEditingTextBoxId(null);
@@ -7424,6 +7821,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     setOpenMenu(null);
     setCanvasQuickMenu(null);
     setModalState(null);
+    clearGraduatedLineDraftState();
     setConfirmResetState(null);
     clearFloatingSelection();
     selectionRef.current = null;
@@ -7707,6 +8105,79 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     }
   }
 
+  function renderGraduatedLinePreview(start: GeometryPointCoordinate, end: GeometryPointCoordinate, startValueInput: string, sectionsInput: string) {
+    const sections = getGraduatedLineSectionCount(sectionsInput);
+    const previewShape = {
+      ...createGraduatedLineShape(start, end, sections),
+      startValue: getGraduatedLineStartValue(startValueInput)
+    };
+    const rendered = getRenderedLinearGeometryPx(previewShape, 480, 120);
+    const ticks = getGraduatedLineRenderTicks(previewShape, 480, 120);
+
+    if (!rendered) {
+      return null;
+    }
+
+    const points = [
+      { x: rendered.x1, y: rendered.y1 },
+      { x: rendered.x2, y: rendered.y2 },
+      ...ticks.flatMap((tick) => [
+        { x: tick.x1, y: tick.y1 },
+        { x: tick.x2, y: tick.y2 }
+      ])
+    ];
+    const minX = Math.min(...points.map((point) => point.x));
+    const maxX = Math.max(...points.map((point) => point.x));
+    const minY = Math.min(...points.map((point) => point.y));
+    const maxY = Math.max(...points.map((point) => point.y));
+    const contentWidth = Math.max(1, maxX - minX);
+    const contentHeight = Math.max(1, maxY - minY);
+    const scale = Math.min((480 - 32) / contentWidth, (120 - 24) / contentHeight, 1);
+    const translateX = (480 - contentWidth * scale) / 2 - minX * scale;
+    const translateY = (120 - contentHeight * scale) / 2 - minY * scale;
+
+    return (
+      <svg className="graduated-line-modal-preview-svg" viewBox="0 0 480 120" aria-hidden="true" focusable="false">
+        <g transform={`translate(${translateX} ${translateY}) scale(${scale})`}>
+          <line
+            className="canvas-geometry-line canvas-geometry-graduated-line"
+            x1={rendered.x1}
+            y1={rendered.y1}
+            x2={rendered.x2}
+            y2={rendered.y2}
+            stroke={previewShape.color}
+            strokeWidth={Math.max(1.4, mmToPx(previewShape.strokeWidthMm))}
+            strokeLinecap="round"
+          />
+          {ticks.map((tick, index) => (
+            <line
+              key={`graduated-line-preview-${index}`}
+              className="canvas-geometry-graduated-line-tick"
+              x1={tick.x1}
+              y1={tick.y1}
+              x2={tick.x2}
+              y2={tick.y2}
+              stroke={previewShape.color}
+              strokeWidth={tick.strokeWidth}
+              strokeLinecap="round"
+            />
+          ))}
+          <text className="canvas-geometry-measure canvas-geometry-graduated-line-label" x={ticks[0] ? ticks[0].x1 : rendered.x1} y={ticks[0] ? ticks[0].y1 - 10 : rendered.y1 - 10} textAnchor="middle">
+            {getGraduatedLineEndpointLabel(previewShape, 0)}
+          </text>
+          <text
+            className="canvas-geometry-measure canvas-geometry-graduated-line-label"
+            x={ticks[ticks.length - 1] ? ticks[ticks.length - 1].x1 : rendered.x2}
+            y={ticks[ticks.length - 1] ? ticks[ticks.length - 1].y1 - 10 : rendered.y2 - 10}
+            textAnchor="middle"
+          >
+            {getGraduatedLineEndpointLabel(previewShape, 1)}
+          </text>
+        </g>
+      </svg>
+    );
+  }
+
   function renderModalFields(block: MathBlock) {
     if (block.type === "fraction") {
       return (
@@ -7829,6 +8300,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
   function toggleAdvancedToolMode(tool: AdvancedTool) {
     setActiveGeometryTool(null);
     clearGeometryDraftState();
+    clearGraduatedLineDraftState();
     setGeometryMeasurement(null);
     setGeometryAngleMeasurement(null);
     setPendingInsertTool(null);
@@ -8023,6 +8495,16 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                   {renderStructuredToolGlyph(tool.id)}
                 </button>
               ))}
+              <button
+                type="button"
+                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "graduated-line" ? "toolbar-shortcut-active" : ""}`}
+                aria-label={t("toolbar.graduatedLine")}
+                aria-pressed={advancedTool === "graduated-line"}
+                title={t("toolbar.graduatedLine")}
+                onClick={() => toggleAdvancedToolMode("graduated-line")}
+              >
+                {renderGraduatedLineGlyph()}
+              </button>
             </div>
           </div>
 
@@ -8333,7 +8815,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
           <div className="document-canvas-viewport">
             <div className="document-canvas-stage">
               <div
-                className={`document-canvas document-canvas-${state.sheetStyle} ${isCanvasDropActive ? "document-canvas-drop-active" : ""} ${isCanvasInteracting ? "document-canvas-interacting" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || activeGeometryTool ? "document-canvas-draw-mode" : ""} ${advancedTool === "highlight" ? "document-canvas-highlight-mode" : ""} ${activeGeometryTool === "protractor" ? "document-canvas-protractor-mode" : ""} ${pendingInsertTool ? "document-canvas-insert-mode" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "select" || advancedTool === "move" || pendingInsertTool || activeGeometryTool ? "document-canvas-touch-locked" : ""}`}
+                className={`document-canvas document-canvas-${state.sheetStyle} ${isCanvasDropActive ? "document-canvas-drop-active" : ""} ${isCanvasInteracting ? "document-canvas-interacting" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "graduated-line" || activeGeometryTool ? "document-canvas-draw-mode" : ""} ${advancedTool === "highlight" ? "document-canvas-highlight-mode" : ""} ${activeGeometryTool === "protractor" ? "document-canvas-protractor-mode" : ""} ${pendingInsertTool ? "document-canvas-insert-mode" : ""} ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "graduated-line" || advancedTool === "select" || advancedTool === "move" || pendingInsertTool || activeGeometryTool ? "document-canvas-touch-locked" : ""}`}
                 style={{ "--canvas-type-size": `${getDefaultCanvasFontSize(state.sheetStyle)}rem` } as ReactCSSProperties}
                 ref={canvasRef}
                 onDragOver={handleCanvasDragOver}
@@ -8662,6 +9144,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                 const measurement = isSelected ? getGeometrySelectionMeasurement(shape) : null;
                 const measurementX = (mmToPx(shape.axMm) + mmToPx(shape.bxMm)) / 2;
                 const measurementY = (mmToPx(shape.ayMm) + mmToPx(shape.byMm)) / 2 - 14;
+                const graduatedLineTicks = shape.kind === "graduated-line" ? getGraduatedLineRenderTicks(shape, intrinsic.width, intrinsic.height) : [];
 
                 return (
                   <g
@@ -8680,23 +9163,58 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                     onTouchStart={(event) => {
                       handleTouchDragStart("geometry", shape.id, bounds.x, bounds.y, event, Boolean(activeGeometryTool));
                     }}
-                    >
-                      <line className="canvas-geometry-hit" x1={rendered.x1} y1={rendered.y1} x2={rendered.x2} y2={rendered.y2} />
-                      <line className="canvas-geometry-line" x1={rendered.x1} y1={rendered.y1} x2={rendered.x2} y2={rendered.y2} stroke={shape.color} strokeWidth={strokeWidthPx} />
-                      {measurement ? (
-                        <text className="canvas-geometry-measure" x={measurementX} y={measurementY} textAnchor="middle">
-                          {measurement}
+                  >
+                    <line className="canvas-geometry-hit" x1={rendered.x1} y1={rendered.y1} x2={rendered.x2} y2={rendered.y2} />
+                    <line className={`canvas-geometry-line ${shape.kind === "graduated-line" ? "canvas-geometry-graduated-line" : ""}`} x1={rendered.x1} y1={rendered.y1} x2={rendered.x2} y2={rendered.y2} stroke={shape.color} strokeWidth={strokeWidthPx} />
+                    {shape.kind === "graduated-line" ? (
+                      graduatedLineTicks.map((tick, index) => (
+                        <line
+                          key={`${shape.id}-tick-${index}`}
+                          className="canvas-geometry-graduated-line-tick"
+                          x1={tick.x1}
+                          y1={tick.y1}
+                          x2={tick.x2}
+                          y2={tick.y2}
+                          stroke={shape.color}
+                          strokeWidth={tick.strokeWidth}
+                          strokeLinecap="round"
+                        />
+                      ))
+                    ) : null}
+                    {shape.kind === "graduated-line" ? (
+                      <>
+                        <text
+                          className="canvas-geometry-measure canvas-geometry-graduated-line-label"
+                          x={graduatedLineTicks[0] ? graduatedLineTicks[0].x1 : rendered.x1}
+                          y={graduatedLineTicks[0] ? graduatedLineTicks[0].y1 - 10 : rendered.y1 - 10}
+                          textAnchor="middle"
+                        >
+                          {getGraduatedLineEndpointLabel(shape, 0)}
                         </text>
-                      ) : null}
-                      {shape.kind === "segment" ? (
-                        <>
-                          <circle className="canvas-geometry-endpoint" cx={mmToPx(shape.axMm)} cy={mmToPx(shape.ayMm)} r={Math.max(2, strokeWidthPx + 0.6)} fill={shape.color} />
-                          <circle className="canvas-geometry-endpoint" cx={mmToPx(shape.bxMm)} cy={mmToPx(shape.byMm)} r={Math.max(2, strokeWidthPx + 0.6)} fill={shape.color} />
-                        </>
-                      ) : shape.kind === "ray" ? (
+                        <text
+                          className="canvas-geometry-measure canvas-geometry-graduated-line-label"
+                          x={graduatedLineTicks[graduatedLineTicks.length - 1] ? graduatedLineTicks[graduatedLineTicks.length - 1].x1 : rendered.x2}
+                          y={graduatedLineTicks[graduatedLineTicks.length - 1] ? graduatedLineTicks[graduatedLineTicks.length - 1].y1 - 10 : rendered.y2 - 10}
+                          textAnchor="middle"
+                        >
+                          {getGraduatedLineEndpointLabel(shape, 1)}
+                      </text>
+                    </>
+                  ) : null}
+                    {measurement ? (
+                      <text className="canvas-geometry-measure" x={measurementX} y={measurementY} textAnchor="middle">
+                        {measurement}
+                      </text>
+                    ) : null}
+                    {shape.kind === "segment" ? (
+                      <>
                         <circle className="canvas-geometry-endpoint" cx={mmToPx(shape.axMm)} cy={mmToPx(shape.ayMm)} r={Math.max(2, strokeWidthPx + 0.6)} fill={shape.color} />
-                      ) : null}
-                    </g>
+                        <circle className="canvas-geometry-endpoint" cx={mmToPx(shape.bxMm)} cy={mmToPx(shape.byMm)} r={Math.max(2, strokeWidthPx + 0.6)} fill={shape.color} />
+                      </>
+                    ) : shape.kind === "ray" ? (
+                      <circle className="canvas-geometry-endpoint" cx={mmToPx(shape.axMm)} cy={mmToPx(shape.ayMm)} r={Math.max(2, strokeWidthPx + 0.6)} fill={shape.color} />
+                    ) : null}
+                  </g>
                 );
               })}
               {geometryMeasurement ? (
@@ -9093,7 +9611,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
             ))}
 
             <svg
-              className={`canvas-draw-layer ${advancedTool === "draw" || advancedTool === "highlight" ? "canvas-draw-layer-active" : ""}`}
+              className={`canvas-draw-layer ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "graduated-line" ? "canvas-draw-layer-active" : ""}`}
               width="100%"
               height="100%"
               onMouseMove={(event) => {
@@ -9107,7 +9625,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                 }
               }}
               onMouseDown={(event) => {
-                if (advancedTool !== "draw" && advancedTool !== "highlight") {
+                if (advancedTool !== "draw" && advancedTool !== "highlight" && advancedTool !== "graduated-line") {
                   return;
                 }
 
@@ -9122,10 +9640,15 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                   closeFloatingTextEditing();
                 }
 
+                if (advancedTool === "graduated-line") {
+                  beginGraduatedLineDrawing(event.clientX, event.clientY);
+                  return;
+                }
+
                 beginFreehandDrawing(event.clientX, event.clientY);
               }}
               onTouchStart={(event) => {
-                if ((advancedTool !== "draw" && advancedTool !== "highlight") || event.touches.length === 0) {
+                if ((advancedTool !== "draw" && advancedTool !== "highlight" && advancedTool !== "graduated-line") || event.touches.length === 0) {
                   return;
                 }
 
@@ -9141,6 +9664,11 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                 }
 
                 const touch = event.touches[0];
+                if (advancedTool === "graduated-line") {
+                  beginGraduatedLineDrawing(touch.clientX, touch.clientY);
+                  return;
+                }
+
                 beginFreehandDrawing(touch.clientX, touch.clientY);
               }}
             >
@@ -9181,6 +9709,15 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                   stroke={draftStrokeStyleRef.current.color}
                   strokeWidth={draftStrokeStyleRef.current.width}
                   strokeOpacity={draftStrokeStyleRef.current.opacity}
+                />
+              ) : null}
+              {graduatedLineDraft ? (
+                <line
+                  className="canvas-geometry-preview canvas-geometry-graduated-line-preview"
+                  x1={mmToPx(graduatedLineDraft.start.xMm)}
+                  y1={mmToPx(graduatedLineDraft.start.yMm)}
+                  x2={mmToPx(graduatedLineDraft.current.xMm)}
+                  y2={mmToPx(graduatedLineDraft.current.yMm)}
                 />
               ) : null}
             </svg>
@@ -9276,6 +9813,37 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                       step="1"
                       value={Math.round(selectedGeometry.radiusMm)}
                       onChange={(event) => updateSelectedCircleRadiusMm(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+                {selectedGeometry.kind === "graduated-line" ? (
+                  <label className="geometry-settings-field">
+                    <span>{t("modalFields.startAt")}</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={selectedGraduatedLineSettings?.startValue ?? String(selectedGeometry.startValue ?? 0)}
+                      onChange={(event) => {
+                        const nextValue = event.target.value.replace(/[^0-9-]/g, "");
+                        patchSelectedGraduatedLineSettings({ startValue: nextValue });
+                        updateSelectedGraduatedLineStartValue(nextValue);
+                      }}
+                      placeholder="0"
+                    />
+                  </label>
+                ) : null}
+                {selectedGeometry.kind === "graduated-line" ? (
+                  <label className="geometry-settings-field">
+                    <span>{t("modalFields.sections")}</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={selectedGraduatedLineSettings?.sections ?? String(selectedGeometry.sections ?? 10)}
+                      onChange={(event) => {
+                        const nextValue = event.target.value.replace(/[^0-9]/g, "");
+                        patchSelectedGraduatedLineSettings({ sections: nextValue });
+                        updateSelectedGraduatedLineSections(nextValue);
+                      }}
                     />
                   </label>
                 ) : null}
@@ -9426,6 +9994,84 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                   <span>{t("modal.preview")}</span>
                 </div>
                 {renderMathPreview(modalState.block)}
+              </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {graduatedLineModalState ? (
+        <div className="modal-backdrop" role="presentation" onClick={cancelGraduatedLineModal}>
+          <section className="block-modal graduated-line-modal" role="dialog" aria-modal="true" aria-labelledby="graduated-line-modal-title" onClick={(event) => event.stopPropagation()}>
+            <div className="block-modal-head">
+              <div>
+                <p className="card-kind">{t("modal.graduatedLine")}</p>
+                <h2 id="graduated-line-modal-title">{t("modal.graduatedLine")}</h2>
+                <p className="toolbar-helper">{t("modal.graduatedLineHelper")}</p>
+              </div>
+              <div className="card-actions">
+                <button type="button" className="small-action" onClick={cancelGraduatedLineModal}>
+                  {t("modal.cancel")}
+                </button>
+                <button type="button" className="small-action primary-inline-action" onClick={confirmGraduatedLineModal}>
+                  {t("modal.insert")}
+                </button>
+              </div>
+            </div>
+
+            <div className="math-editor-grid graduated-line-modal-grid">
+                <label className="wide-field">
+                  <span>{t("modalFields.startAt")}</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={graduatedLineModalSettings?.startValue ?? graduatedLineModalState.startValue}
+                    onChange={(event) => {
+                      const nextSettings = {
+                        startValue: event.target.value.replace(/[^0-9-]/g, ""),
+                        sections: graduatedLineModalSettings?.sections ?? graduatedLineModalState.sections
+                      };
+                      graduatedLineModalSettingsRef.current = nextSettings;
+                      setGraduatedLineModalSettings(nextSettings);
+                    }}
+                    placeholder="0"
+                  />
+                </label>
+                <label className="wide-field">
+                  <span>{t("modalFields.sections")}</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={graduatedLineModalSettings?.sections ?? graduatedLineModalState.sections}
+                    onChange={(event) => updateGraduatedLineModalSections(event.target.value)}
+                    placeholder="10"
+                  />
+                </label>
+                <div className="graduated-line-preset-row" aria-label={t("modal.graduatedLinePresets")}>
+                {GRADUATED_LINE_PRESET_VALUES.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`chip-button chip-button-compact graduated-line-preset-button ${(graduatedLineModalSettings?.sections ?? graduatedLineModalState.sections) === String(value) ? "graduated-line-preset-button-active" : ""}`}
+                    onClick={() => selectGraduatedLinePreset(value)}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="block-modal-preview graduated-line-modal-preview">
+              <section className="export-math-block">
+                <div className="export-math-head">
+                  <span>{t("modal.preview")}</span>
+                </div>
+                {renderGraduatedLinePreview(
+                  graduatedLineModalState.start,
+                  graduatedLineModalState.end,
+                  graduatedLineModalSettings?.startValue ?? graduatedLineModalState.startValue,
+                  graduatedLineModalSettings?.sections ?? graduatedLineModalState.sections
+                )}
               </section>
             </div>
           </section>
