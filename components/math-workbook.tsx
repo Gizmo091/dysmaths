@@ -16,2644 +16,234 @@ import {
   useState
 } from "react";
 import {useLocale, useTranslations} from "next-intl";
-import { toBlob, toPng } from "html-to-image";
-import { jsPDF } from "jspdf";
-import {localeLabels, type AppLocale} from "@/i18n/routing";
+import {toBlob} from "html-to-image";
+import {type AppLocale} from "@/i18n/routing";
 import {usePathname, useRouter} from "@/i18n/navigation";
 import {PWA_INSTALLABLE_EVENT, PWA_INSTALLED_EVENT} from "@/components/pwa-registration";
-
-type StudyMode = "middleSchool" | "highSchool";
-type SheetStyle = "seyes" | "large-grid" | "small-grid" | "lined" | "blank";
-type StructuredTool = "fraction" | "addition" | "subtraction" | "multiplication" | "division" | "power" | "root";
-type UtilityMenu = "highlight" | "settings" | "install" | null;
-type GeometryTool = "point" | "segment" | "line" | "ray" | "circle" | "measure" | "protractor" | "compass";
-
-type FractionBlock = {
-  id: string;
-  type: "fraction";
-  numerator: string;
-  denominator: string;
-  simplified: string;
-  caption: string;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-  numeratorStrike?: boolean;
-  denominatorStrike?: boolean;
-  x: number;
-  y: number;
-  width: number;
-};
-
-type DivisionBlock = {
-  id: string;
-  type: "division";
-  dividend: string;
-  divisor: string;
-  quotient: string;
-  remainder: string;
-  work: string;
-  struckCells: string[];
-  caption: string;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-  x: number;
-  y: number;
-  width: number;
-};
-
-type AdditionBlock = {
-  id: string;
-  type: "addition";
-  top: string;
-  bottom: string;
-  result: string;
-  carryTop: string[];
-  carryBottom: string[];
-  carryResult: string[];
-  struckCells: string[];
-  caption: string;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-  x: number;
-  y: number;
-  width: number;
-};
-
-type SubtractionBlock = {
-  id: string;
-  type: "subtraction";
-  top: string;
-  bottom: string;
-  result: string;
-  carryTop: string[];
-  carryBottom: string[];
-  carryResult: string[];
-  struckCells: string[];
-  caption: string;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-  x: number;
-  y: number;
-  width: number;
-};
-
-type MultiplicationBlock = {
-  id: string;
-  type: "multiplication";
-  top: string;
-  bottom: string;
-  result: string;
-  carryTop: string[];
-  carryBottom: string[];
-  carryResult: string[];
-  struckCells: string[];
-  caption: string;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-  x: number;
-  y: number;
-  width: number;
-};
-
-type PowerBlock = {
-  id: string;
-  type: "power";
-  base: string;
-  exponent: string;
-  result: string;
-  caption: string;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-  x: number;
-  y: number;
-  width: number;
-};
-
-type RootBlock = {
-  id: string;
-  type: "root";
-  radicand: string;
-  result: string;
-  caption: string;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-  x: number;
-  y: number;
-  width: number;
-};
-
-type FloatingSymbol = {
-  id: string;
-  type: "symbol";
-  label: string;
-  content: string;
-  kind?: "text" | "sum" | "integral";
-  size?: number;
-  x: number;
-  y: number;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-};
-
-type FloatingTextBox = {
-  id: string;
-  type: "textBox";
-  variant?: "default" | "note";
-  notation?: "plain" | "angle";
-  text: string;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  underline: boolean;
-  highlightColor: string | null;
-  x: number;
-  y: number;
-  width: number;
-};
-
-type FreehandPoint = {
-  x: number;
-  y: number;
-};
-
-type FreehandStroke = {
-  id: string;
-  color: string;
-  width: number;
-  opacity: number;
-  points: FreehandPoint[];
-};
-
-type GeometryPointShape = {
-  id: string;
-  type: "geometry";
-  kind: "point";
-  xMm: number;
-  yMm: number;
-  label: string;
-  color: string;
-  strokeWidthMm: number;
-};
-
-type GeometryLinearShape = {
-  id: string;
-  type: "geometry";
-  kind: "segment" | "line" | "ray" | "graduated-line";
-  axMm: number;
-  ayMm: number;
-  bxMm: number;
-  byMm: number;
-  startValue?: number;
-  sections?: number;
-  color: string;
-  strokeWidthMm: number;
-};
-
-type GeometryCircleShape = {
-  id: string;
-  type: "geometry";
-  kind: "circle";
-  cxMm: number;
-  cyMm: number;
-  radiusMm: number;
-  color: string;
-  strokeWidthMm: number;
-};
-
-type GeometryArcShape = {
-  id: string;
-  type: "geometry";
-  kind: "arc";
-  cxMm: number;
-  cyMm: number;
-  radiusMm: number;
-  startAngle: number;
-  endAngle: number;
-  color: string;
-  strokeWidthMm: number;
-};
-
-type GraduatedLineModalShape = GeometryLinearShape & {
-  kind: "graduated-line";
-  sections: number;
-};
-
-type MathBlock = FractionBlock | AdditionBlock | SubtractionBlock | MultiplicationBlock | DivisionBlock | PowerBlock | RootBlock;
-type GeometryShape = GeometryPointShape | GeometryLinearShape | GeometryCircleShape | GeometryArcShape | GraduatedLineModalShape;
-
-type WriterState = {
-  schemaVersion: number;
-  title: string;
-  mode: StudyMode;
-  sheetStyle: SheetStyle;
-  activeColor: string;
-  activeHighlightColor: string | null;
-  textHtml: string;
-  blocks: MathBlock[];
-  symbols: FloatingSymbol[];
-  textBoxes: FloatingTextBox[];
-  strokes: FreehandStroke[];
-  geometry: GeometryShape[];
-};
-
-type ModalState =
-  | {
-      mode: "insert" | "edit";
-      block: MathBlock;
-    }
-  | null;
-
-type GraduatedLineDraft = {
-  start: GeometryPointCoordinate;
-  current: GeometryPointCoordinate;
-};
-
-type GraduatedLineModalState = {
-  start: GeometryPointCoordinate;
-  end: GeometryPointCoordinate;
-  startValue: string;
-  sections: string;
-} | null;
-
-type GraduatedLineModalSettings = {
-  startValue: string;
-  sections: string;
-} | null;
-
-type ConfirmResetState = {
-  open: boolean;
-} | null;
-
-type InlineShortcutItem = {
-  id: string;
-  label: string;
-  hint: string;
-  content: string;
-  modes: StudyMode[];
-};
-
-type InlineShortcutGroup = {
-  name: string;
-  items: InlineShortcutItem[];
-};
-
-type DragState = {
-  itemType: "block" | "symbol" | "textBox" | "stroke" | "geometry";
-  itemId: string;
-  pointerOffsetX: number;
-  pointerOffsetY: number;
-  pointerOriginX: number;
-  pointerOriginY: number;
-  groupBlockPositions: Array<{ id: string; x: number; y: number }>;
-  groupSymbolPositions: Array<{ id: string; x: number; y: number }>;
-  groupTextBoxPositions: Array<{ id: string; x: number; y: number }>;
-  groupStrokePositions: Array<{ id: string; x: number; y: number; points: FreehandPoint[] }>;
-  groupGeometryShapes: GeometryShape[];
-  anchorX: number;
-  anchorY: number;
-} | null;
-
-type SelectionRect = {
-  originX: number;
-  originY: number;
-  currentX: number;
-  currentY: number;
-} | null;
-
-type PendingSelection = {
-  originX: number;
-  originY: number;
-  started: boolean;
-} | null;
-
-type ToolbarDragPayload =
-  | { kind: "structured"; toolId: StructuredTool }
-  | { kind: "shortcut"; shortcutId: string };
-
-type PendingInsertTool =
-  | { kind: "text" }
-  | { kind: "structured"; toolId: StructuredTool }
-  | { kind: "shortcut"; shortcutId: string }
-  | null;
-
-type InsertCursorPreview = {
-  x: number;
-  y: number;
-  visible: boolean;
-};
-
-type ToolbarDragMeta = {
-  offsetX: number;
-  offsetY: number;
-  previewNode: HTMLElement | null;
-};
-
-type EditingBlockState =
-  | {
-      blockId: string;
-      field: string;
-    }
-  | null;
-
-type CanvasQuickMenu =
-  | {
-      x: number;
-      y: number;
-      clickX: number;
-      clickY: number;
-    }
-  | null;
-
-type FloatingTextShortcutLayout = {
-  className: string;
-  style: ReactCSSProperties;
-};
-
-type DefaultDocumentLabels = {
-  title: string;
-  fullName: string;
-  className: string;
-  date: string;
-};
-
-type WorkbookTranslator = (key: string, values?: Record<string, string | number>) => string;
-
-type ColorOption = {
-  id: "ink" | "orange" | "blue" | "green" | "pink";
-  label: string;
-  value: string;
-};
-
-type HighlightOption = {
-  id: "yellow" | "green" | "blue" | "pink";
-  label: string;
-  value: string;
-};
-
-type SheetStyleOption = {
-  id: SheetStyle;
-  label: string;
-};
-
-type GeometryToolOption = {
-  id: GeometryTool;
-  label: string;
-  hint: string;
-  glyph: string;
-};
-
-type StructuredToolOption = {
-  id: StructuredTool;
-  label: string;
-  hint: string;
-  modes: StudyMode[];
-};
-
-type GeometryPointCoordinate = {
-  xMm: number;
-  yMm: number;
-};
-
-type GeometryDraft = {
-  tool: GeometryTool;
-  start: GeometryPointCoordinate;
-  current: GeometryPointCoordinate;
-};
-
-type GeometryDraftIndicator = {
-  x: number;
-  y: number;
-  label: string;
-};
-
-type GeometryMeasurement = {
-  start: GeometryPointCoordinate;
-  end: GeometryPointCoordinate;
-};
-
-type GeometryProtractorDraft = {
-  firstPoint: GeometryPointCoordinate;
-  vertex: GeometryPointCoordinate | null;
-  current: GeometryPointCoordinate;
-};
-
-type GeometryAngleMeasurement = {
-  vertex: GeometryPointCoordinate;
-  baseline: GeometryPointCoordinate;
-  end: GeometryPointCoordinate;
-};
-
-type GeometryCompassDraft = {
-  phase: "radius" | "arc";
-  center: GeometryPointCoordinate;
-  startPoint: GeometryPointCoordinate | null;
-  radiusMm: number | null;
-  startAngle: number | null;
-  currentAngle: number | null;
-  accumulatedSweep: number;
-  current: GeometryPointCoordinate;
-};
-
-type SnapGuides = {
-  x: number | null;
-  y: number | null;
-};
-
-type AdvancedTool = "select" | "move" | "note" | "draw" | "highlight" | "graduated-line" | null;
-type SymbolResizeHandle = "nw" | "se";
-type SymbolResizeState = {
-  symbolId: string;
-  handle: SymbolResizeHandle;
-  startClientX: number;
-  startClientY: number;
-  startX: number;
-  startY: number;
-  startSize: number;
-};
-
-const STORAGE_KEY = "maths-facile-free-layout-v1";
-const WRITER_STATE_SCHEMA_VERSION = 2;
-const FLOATING_TEXTBOX_Y_OFFSET = 10;
-const CANVAS_QUICK_MENU_OFFSET_X = 30;
-const MAX_HISTORY_STEPS = 80;
-const DEFAULT_CANVAS_FONT_SIZE_REM = 1.18;
-const PAPER_LINE_STEP_REM = 2.95;
-const CANVAS_GRID_LEFT_REM = 4.8;
-const CANVAS_GRID_TOP_REM = PAPER_LINE_STEP_REM;
-const MAX_SNAP_THRESHOLD_PX = 10;
-const CANVAS_LINE_BASELINE_OFFSET_PX = 5;
-const DEFAULT_ACTIVE_COLOR = "#1f2d3d";
-const DEFAULT_HIGHLIGHT_TOOL_COLOR = "rgb(255 226 92)";
-const DEFAULT_SUM_SYMBOL_SIZE = 54;
-const DEFAULT_INTEGRAL_SYMBOL_SIZE = 60;
-const DEFAULT_GEOMETRY_STROKE_WIDTH_MM = 0.55;
-const GEOMETRY_POINT_RADIUS_MM = 1.15;
-const GEOMETRY_HIT_RADIUS_PX = 14;
-const GEOMETRY_LINE_EXTENT_PX = 2400;
-const HIGHLIGHT_STROKE_OPACITY = 0.4;
-const HIGHLIGHT_STROKE_WIDTH = 10;
-const MM_TO_PX = 96 / 25.4;
-const SEYES_MAJOR_MM = 8;
-const SEYES_MINOR_MM = 2;
-const SMALL_GRID_MM = 5;
-const SEYES_MARGIN_CM = 4;
-
-function mmToPx(mm: number) {
-  return mm * MM_TO_PX;
-}
-
-function cmToPx(cm: number) {
-  return mmToPx(cm * 10);
-}
-
-function pxToMm(px: number) {
-  return px / MM_TO_PX;
-}
-
-function getDefaultCanvasFontSize(sheetStyle: SheetStyle) {
-  switch (sheetStyle) {
-    case "seyes":
-    case "lined":
-      return 1.02;
-    case "small-grid":
-      return 0.96;
-    case "large-grid":
-    case "blank":
-    default:
-      return DEFAULT_CANVAS_FONT_SIZE_REM;
-  }
-}
-
-function getDefaultNoteFontSize(sheetStyle: SheetStyle) {
-  return Math.max(0.84, Number((getDefaultCanvasFontSize(sheetStyle) - 0.18).toFixed(2)));
-}
-
-const DEFAULT_TEXT_HTML = "";
-const DEFAULT_DOCUMENT_LABELS: DefaultDocumentLabels = {
-  title: "My math assignment",
-  fullName: "Full name:",
-  className: "Class:",
-  date: "Date:"
-};
-
-function getDefaultSheetStyleForLocale(locale: AppLocale): SheetStyle {
-  switch (locale) {
-    case "fr":
-      return "seyes";
-    case "es":
-      return "small-grid";
-    case "en":
-    default:
-      return "lined";
-  }
-}
-
-function createDefaultHeaderTextBoxes(sheetStyle: SheetStyle, labels: DefaultDocumentLabels = DEFAULT_DOCUMENT_LABELS): FloatingTextBox[] {
-  const metrics = getSheetMetrics(sheetStyle, 16);
-  const fontSize = getDefaultCanvasFontSize(sheetStyle);
-  const fieldHeight = Math.max(24, fontSize * 22);
-  const firstBaseline = metrics.originY + metrics.snapYStep;
-  const secondBaseline = metrics.originY + metrics.snapYStep * 2;
-  const startX = (sheetStyle === "seyes" ? cmToPx(5.1) : mmToPx(14)) - 16;
-  const dateX = mmToPx(145);
-
-  return [
-    {
-      id: createId("text"),
-      type: "textBox",
-      variant: "default",
-      text: labels.fullName,
-      color: DEFAULT_ACTIVE_COLOR,
-      fontSize,
-      fontWeight: 500,
-      fontStyle: "normal",
-      underline: false,
-      highlightColor: null,
-      x: Math.round(startX),
-      y: Math.round(firstBaseline - fieldHeight + 5),
-      width: getTextBoxWidth(labels.fullName)
-    },
-    {
-      id: createId("text"),
-      type: "textBox",
-      variant: "default",
-      text: labels.className,
-      color: DEFAULT_ACTIVE_COLOR,
-      fontSize,
-      fontWeight: 500,
-      fontStyle: "normal",
-      underline: false,
-      highlightColor: null,
-      x: Math.round(startX),
-      y: Math.round(secondBaseline - fieldHeight + 5),
-      width: getTextBoxWidth(labels.className)
-    },
-    {
-      id: createId("text"),
-      type: "textBox",
-      variant: "default",
-      text: labels.date,
-      color: DEFAULT_ACTIVE_COLOR,
-      fontSize,
-      fontWeight: 500,
-      fontStyle: "normal",
-      underline: false,
-      highlightColor: null,
-      x: Math.round(dateX),
-      y: Math.round(secondBaseline - fieldHeight + 5),
-      width: getTextBoxWidth(labels.date)
-    }
-  ];
-}
-
-function createDefaultState(sheetStyle: SheetStyle = "seyes", labels: DefaultDocumentLabels = DEFAULT_DOCUMENT_LABELS): WriterState {
-  return {
-    schemaVersion: WRITER_STATE_SCHEMA_VERSION,
-    title: labels.title,
-    mode: "middleSchool",
-    sheetStyle,
-    activeColor: DEFAULT_ACTIVE_COLOR,
-    activeHighlightColor: "rgba(255, 226, 92, 0.58)",
-    textHtml: DEFAULT_TEXT_HTML,
-    blocks: [],
-    symbols: [],
-    textBoxes: createDefaultHeaderTextBoxes(sheetStyle, labels),
-    strokes: [],
-    geometry: []
-  };
-}
-
-const COLOR_OPTION_VALUES = [
-  { id: "ink", value: "#1f2d3d" },
-  { id: "orange", value: "#d56f3c" },
-  { id: "blue", value: "#2169b3" },
-  { id: "green", value: "#2f8f57" },
-  { id: "pink", value: "#b54d7a" }
-] as const;
-
-const HIGHLIGHT_OPTION_VALUES = [
-  { id: "yellow", value: "rgb(255 226 92)" },
-  { id: "green", value: "rgb(144 219 171)" },
-  { id: "blue", value: "rgb(160 208 255)" },
-  { id: "pink", value: "rgb(255 184 210)" }
-] as const;
-
-const GRADUATED_LINE_PRESET_VALUES = [2, 5, 10, 20, 40] as const;
-
-const SHEET_STYLE_OPTION_IDS = [
-  { id: "seyes", key: "seyes" },
-  { id: "large-grid", key: "largeGrid" },
-  { id: "small-grid", key: "smallGrid" },
-  { id: "lined", key: "lined" },
-  { id: "blank", key: "blank" }
-] as const;
-
-const GEOMETRY_TOOL_DEFINITIONS = [
-  { id: "point", key: "point", glyph: "•" },
-  { id: "segment", key: "segment", glyph: "AB" },
-  { id: "line", key: "line", glyph: "↔" },
-  { id: "ray", key: "ray", glyph: "→" },
-  { id: "circle", key: "circle", glyph: "◯" },
-  { id: "compass", key: "compass", glyph: "⌒" },
-  { id: "measure", key: "measure", glyph: "cm" },
-  { id: "protractor", key: "protractor", glyph: "protractor" }
-] as const;
-
-const STRUCTURED_TOOL_DEFINITIONS = [
-  { id: "fraction", key: "fraction", modes: ["middleSchool", "highSchool"] as StudyMode[] },
-  { id: "addition", key: "addition", modes: ["middleSchool", "highSchool"] as StudyMode[] },
-  { id: "subtraction", key: "subtraction", modes: ["middleSchool", "highSchool"] as StudyMode[] },
-  { id: "multiplication", key: "multiplication", modes: ["middleSchool", "highSchool"] as StudyMode[] },
-  { id: "division", key: "division", modes: ["middleSchool", "highSchool"] as StudyMode[] },
-  { id: "power", key: "power", modes: ["middleSchool", "highSchool"] as StudyMode[] },
-  { id: "root", key: "root", modes: ["middleSchool", "highSchool"] as StudyMode[] }
-] as const;
-
-const INLINE_SHORTCUT_DEFINITIONS: Array<{
-  nameKey: "essentials" | "geometry" | "highSchool";
-  items: Array<InlineShortcutItem & {hintKey: keyof ReturnType<typeof createWorkbookUi>["shortcutHints"]}>;
-}> = [
-  {
-    nameKey: "essentials",
-    items: [
-      { id: "equal", label: "=", hintKey: "equal", hint: "", content: " = ", modes: ["middleSchool", "highSchool"] },
-      { id: "neq", label: "≠", hintKey: "neq", hint: "", content: " ≠ ", modes: ["middleSchool", "highSchool"] },
-      { id: "lt", label: "<", hintKey: "lt", hint: "", content: " < ", modes: ["middleSchool", "highSchool"] },
-      { id: "gt", label: ">", hintKey: "gt", hint: "", content: " > ", modes: ["middleSchool", "highSchool"] },
-      { id: "leq", label: "≤", hintKey: "leq", hint: "", content: " ≤ ", modes: ["middleSchool", "highSchool"] },
-      { id: "geq", label: "≥", hintKey: "geq", hint: "", content: " ≥ ", modes: ["middleSchool", "highSchool"] },
-      { id: "minus", label: "-", hintKey: "minus", hint: "", content: " - ", modes: ["middleSchool", "highSchool"] },
-      { id: "times", label: "×", hintKey: "times", hint: "", content: " × ", modes: ["middleSchool", "highSchool"] },
-      { id: "div", label: "÷", hintKey: "div", hint: "", content: " ÷ ", modes: ["middleSchool", "highSchool"] },
-      { id: "lbracket", label: "[", hintKey: "lbracket", hint: "", content: "[", modes: ["middleSchool", "highSchool"] },
-      { id: "rbracket", label: "]", hintKey: "rbracket", hint: "", content: "]", modes: ["middleSchool", "highSchool"] },
-      { id: "percent", label: "%", hintKey: "percent", hint: "", content: "%", modes: ["middleSchool", "highSchool"] },
-      { id: "pi", label: "π", hintKey: "pi", hint: "", content: "π", modes: ["middleSchool", "highSchool"] }
-    ]
-  },
-  {
-    nameKey: "geometry",
-    items: [
-      { id: "angle", label: "∠ABC", hintKey: "angle", hint: "", content: "∠ABC", modes: ["middleSchool", "highSchool"] },
-      { id: "parallel", label: "∥", hintKey: "parallel", hint: "", content: " ∥ ", modes: ["middleSchool", "highSchool"] },
-      { id: "perpendicular", label: "⟂", hintKey: "perpendicular", hint: "", content: " ⟂ ", modes: ["middleSchool", "highSchool"] },
-      { id: "degree", label: "°", hintKey: "degree", hint: "", content: "°", modes: ["middleSchool", "highSchool"] }
-    ]
-  },
-  {
-    nameKey: "highSchool",
-    items: [
-      { id: "sum", label: "Σ", hintKey: "sum", hint: "", content: "Σ(k=1→n)", modes: ["highSchool"] },
-      { id: "integral", label: "∫", hintKey: "integral", hint: "", content: "∫[a;b]", modes: ["highSchool"] }
-    ]
-  }
-];
-
-function createId(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function safeFileName(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9-_]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function renderShortcutGlyph(shortcut: Pick<InlineShortcutItem, "id" | "label">) {
-  return (
-    <span className={`math-shortcut-glyph ${shortcut.id === "parallel" ? "math-shortcut-glyph-parallel" : ""}`}>
-      {shortcut.label}
-    </span>
-  );
-}
-
-function createWorkbookUi(t: WorkbookTranslator) {
-  const colorOptions: ColorOption[] = COLOR_OPTION_VALUES.map((option) => ({
-    ...option,
-    label: t(`colors.${option.id}`)
-  }));
-  const highlightOptions: HighlightOption[] = HIGHLIGHT_OPTION_VALUES.map((option) => ({
-    ...option,
-    label: t(`highlights.${option.id}`)
-  }));
-  const sheetStyleOptions: SheetStyleOption[] = SHEET_STYLE_OPTION_IDS.map((option) => ({
-    id: option.id,
-    label: t(`sheetStyles.${option.key}`)
-  }));
-  const geometryTools: GeometryToolOption[] = GEOMETRY_TOOL_DEFINITIONS.map((tool) => ({
-    id: tool.id,
-    glyph: tool.glyph,
-    label: t(`geometryTools.${tool.key}.label`),
-    hint: t(`geometryTools.${tool.key}.hint`)
-  }));
-  const structuredTools: StructuredToolOption[] = STRUCTURED_TOOL_DEFINITIONS.map((tool) => ({
-    id: tool.id,
-    modes: tool.modes,
-    label: t(`structuredTools.${tool.key}.label`),
-    hint: t(`structuredTools.${tool.key}.hint`)
-  }));
-  const shortcutHints = {
-    equal: t("shortcuts.equal"),
-    neq: t("shortcuts.neq"),
-    lt: t("shortcuts.lt"),
-    gt: t("shortcuts.gt"),
-    leq: t("shortcuts.leq"),
-    geq: t("shortcuts.geq"),
-    minus: t("shortcuts.minus"),
-    times: t("shortcuts.times"),
-    div: t("shortcuts.div"),
-    lbracket: t("shortcuts.lbracket"),
-    rbracket: t("shortcuts.rbracket"),
-    percent: t("shortcuts.percent"),
-    pi: t("shortcuts.pi"),
-    angle: t("shortcuts.angle"),
-    parallel: t("shortcuts.parallel"),
-    perpendicular: t("shortcuts.perpendicular"),
-    degree: t("shortcuts.degree"),
-    sum: t("shortcuts.sum"),
-    integral: t("shortcuts.integral")
-  } as const;
-  const inlineShortcutGroups: InlineShortcutGroup[] = INLINE_SHORTCUT_DEFINITIONS.map((group) => ({
-    name: t(`shortcutGroups.${group.nameKey}`),
-    items: group.items.map((item) => ({
-      ...item,
-      hint: shortcutHints[item.hintKey]
-    }))
-  }));
-
-  return {
-    defaultDocumentLabels: {
-      title: t("document.defaultTitle"),
-      fullName: t("document.defaultFullName"),
-      className: t("document.defaultClass"),
-      date: t("document.defaultDate")
-    } satisfies DefaultDocumentLabels,
-    colorOptions,
-    highlightOptions,
-    sheetStyleOptions,
-    geometryTools,
-    structuredTools,
-    inlineShortcutGroups,
-    shortcutHints,
-    blockTitles: {
-      fraction: t("blockTitles.fraction"),
-      addition: t("blockTitles.addition"),
-      subtraction: t("blockTitles.subtraction"),
-      multiplication: t("blockTitles.multiplication"),
-      division: t("blockTitles.division"),
-      power: t("blockTitles.power"),
-      root: t("blockTitles.root"),
-      default: t("blockTitles.default")
-    }
-  };
-}
-
-function renderStructuredToolGlyph(toolId: StructuredTool) {
-  if (toolId === "fraction") {
-    return "a/b";
-  }
-
-  if (toolId === "addition") {
-    return "+";
-  }
-
-  if (toolId === "subtraction") {
-    return "-";
-  }
-
-  if (toolId === "multiplication") {
-    return "×";
-  }
-
-  if (toolId === "division") {
-    return "÷";
-  }
-
-  if (toolId === "power") {
-    return "aⁿ";
-  }
-
-  return "√";
-}
-
-function renderGeometryToolGlyph(tool: Pick<GeometryToolOption, "id" | "glyph">) {
-  if (tool.id !== "protractor") {
-    return tool.glyph;
-  }
-
-  return (
-    <span className="geometry-tool-protractor-glyph" aria-hidden="true">
-      <svg viewBox="0 0 100 60" focusable="false">
-        <path d="M10 50A40 40 0 0 1 90 50" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
-        <path d="M50 50L50 18" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
-        <path d="M26 50L31 36" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-        <path d="M74 50L69 36" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-      </svg>
-    </span>
-  );
-}
-
-function renderGraduatedLineGlyph() {
-  return (
-    <span className="geometry-tool-graduated-line-glyph" aria-hidden="true">
-      <svg viewBox="0 0 100 40" focusable="false">
-        <path d="M14 20H86" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
-        <path d="M24 28V10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-        <path d="M44 30V8" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
-        <path d="M64 28V10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-        <path d="M84 30V6" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
-      </svg>
-    </span>
-  );
-}
-
-function renderSumSymbolSvg(size: number) {
-  const strokeWidth = Math.max(4, Math.round(size * 0.08));
-
-  return (
-    <svg viewBox="0 0 100 120" aria-hidden="true" focusable="false">
-      <path
-        d="M72 18H28L57 60L28 102H72"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function renderIntegralSymbolSvg(size: number) {
-  const strokeWidth = Math.max(4, Math.round(size * 0.075));
-
-  return (
-    <svg viewBox="0 0 100 140" aria-hidden="true" focusable="false">
-      <path
-        d="M60 16C48 16 40 25 40 38V102C40 116 32 126 20 126"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function getTextBoxWidth(text: string) {
-  const visibleText = text.trim();
-  return Math.max(36, Math.min(920, visibleText.length * 14 + 12));
-}
-
-function getSheetMetrics(sheetStyle: SheetStyle, rem: number) {
-  const seyesStep = mmToPx(SEYES_MAJOR_MM);
-  const seyesMinorStep = mmToPx(SEYES_MINOR_MM);
-  const smallGridStep = mmToPx(SMALL_GRID_MM);
-
-  switch (sheetStyle) {
-    case "large-grid":
-      return {
-        snapXStep: seyesStep,
-        snapYStep: seyesStep,
-        originX: seyesStep,
-        originY: seyesStep,
-        baselineOffset: CANVAS_LINE_BASELINE_OFFSET_PX,
-        snapX: true,
-        snapY: true
-      };
-    case "small-grid":
-      return {
-        snapXStep: smallGridStep,
-        snapYStep: smallGridStep,
-        originX: smallGridStep,
-        originY: smallGridStep,
-        baselineOffset: CANVAS_LINE_BASELINE_OFFSET_PX,
-        snapX: true,
-        snapY: true
-      };
-    case "lined":
-      return {
-        snapXStep: seyesStep / 2,
-        snapYStep: seyesStep,
-        originX: CANVAS_GRID_LEFT_REM * rem,
-        originY: seyesStep,
-        baselineOffset: CANVAS_LINE_BASELINE_OFFSET_PX,
-        snapX: false,
-        snapY: true
-      };
-    case "blank":
-      return {
-        snapXStep: seyesStep / 2,
-        snapYStep: seyesStep,
-        originX: CANVAS_GRID_LEFT_REM * rem,
-        originY: seyesStep,
-        baselineOffset: CANVAS_LINE_BASELINE_OFFSET_PX,
-        snapX: true,
-        snapY: true
-      };
-    case "seyes":
-    default:
-      return {
-        snapXStep: seyesStep,
-        snapYStep: seyesStep,
-        originX: seyesStep,
-        originY: seyesStep,
-        baselineOffset: CANVAS_LINE_BASELINE_OFFSET_PX,
-        snapX: true,
-        snapY: true
-      };
-  }
-}
-
-function getStrokeBounds(points: FreehandPoint[]) {
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  return {
-    x: Math.min(...xs),
-    y: Math.min(...ys),
-    width: Math.max(1, Math.max(...xs) - Math.min(...xs)),
-    height: Math.max(1, Math.max(...ys) - Math.min(...ys))
-  };
-}
-
-function createStrokePath(points: FreehandPoint[]): string {
-  if (points.length === 0) {
-    return "";
-  }
-
-  const [firstPoint, ...otherPoints] = points;
-  return `M ${firstPoint.x} ${firstPoint.y} ${otherPoints.map((point) => `L ${point.x} ${point.y}`).join(" ")}`;
-}
-
-function getPointDistance(left: FreehandPoint, right: FreehandPoint): number {
-  return Math.hypot(right.x - left.x, right.y - left.y);
-}
-
-function getStrokeLength(points: FreehandPoint[]): number {
-  let length = 0;
-
-  for (let index = 1; index < points.length; index += 1) {
-    length += getPointDistance(points[index - 1], points[index]);
-  }
-
-  return length;
-}
-
-function getDistanceToSegment(point: FreehandPoint, start: FreehandPoint, end: FreehandPoint): number {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const squaredLength = dx * dx + dy * dy;
-
-  if (squaredLength === 0) {
-    return getPointDistance(point, start);
-  }
-
-  const projection = ((point.x - start.x) * dx + (point.y - start.y) * dy) / squaredLength;
-  const clampedProjection = Math.max(0, Math.min(1, projection));
-
-  return Math.hypot(point.x - (start.x + clampedProjection * dx), point.y - (start.y + clampedProjection * dy));
-}
-
-function simplifyStrokePoints(points: FreehandPoint[], epsilon: number): FreehandPoint[] {
-  if (points.length <= 2) {
-    return points;
-  }
-
-  let maxDistance = 0;
-  let splitIndex = 0;
-
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const distance = getDistanceToSegment(points[index], points[0], points[points.length - 1]);
-
-    if (distance > maxDistance) {
-      maxDistance = distance;
-      splitIndex = index;
-    }
-  }
-
-  if (maxDistance <= epsilon) {
-    return [points[0], points[points.length - 1]];
-  }
-
-  const left = simplifyStrokePoints(points.slice(0, splitIndex + 1), epsilon);
-  const right = simplifyStrokePoints(points.slice(splitIndex), epsilon);
-  return [...left.slice(0, -1), ...right];
-}
-
-function getPolygonArea(points: FreehandPoint[]): number {
-  let area = 0;
-
-  for (let index = 0; index < points.length; index += 1) {
-    const current = points[index];
-    const next = points[(index + 1) % points.length];
-    area += current.x * next.y - next.x * current.y;
-  }
-
-  return Math.abs(area) / 2;
-}
-
-function isNearRightAngle(previous: FreehandPoint, current: FreehandPoint, next: FreehandPoint): boolean {
-  const leftVector = { x: previous.x - current.x, y: previous.y - current.y };
-  const rightVector = { x: next.x - current.x, y: next.y - current.y };
-  const leftLength = Math.hypot(leftVector.x, leftVector.y);
-  const rightLength = Math.hypot(rightVector.x, rightVector.y);
-
-  if (leftLength === 0 || rightLength === 0) {
-    return false;
-  }
-
-  const dot = (leftVector.x * rightVector.x + leftVector.y * rightVector.y) / (leftLength * rightLength);
-  return Math.abs(dot) < 0.34;
-}
-
-function createCirclePoints(centerX: number, centerY: number, radius: number, segments = 28): FreehandPoint[] {
-  return Array.from({ length: segments + 1 }, (_, index) => {
-    const angle = (Math.PI * 2 * index) / segments;
-    return {
-      x: centerX + Math.cos(angle) * radius,
-      y: centerY + Math.sin(angle) * radius
-    };
-  });
-}
-
-function normalizeStrokeShape(points: FreehandPoint[]): FreehandPoint[] {
-  if (points.length < 2) {
-    return points;
-  }
-
-  const bounds = getStrokeBounds(points);
-  const diagonal = Math.hypot(bounds.width, bounds.height);
-  const totalLength = getStrokeLength(points);
-  const startPoint = points[0];
-  const endPoint = points[points.length - 1];
-  const endDistance = getPointDistance(startPoint, endPoint);
-  const isClosed = diagonal > 20 && endDistance <= Math.max(14, diagonal * 0.2);
-
-  if (totalLength > 28 && endDistance / Math.max(totalLength, 1) > 0.9) {
-    const maxDeviation = points.reduce((max, point) => Math.max(max, getDistanceToSegment(point, startPoint, endPoint)), 0);
-
-    if (maxDeviation <= Math.max(6, diagonal * 0.08)) {
-      return [startPoint, endPoint];
-    }
-  }
-
-  if (!isClosed) {
-    return points;
-  }
-
-  const simplified = simplifyStrokePoints(points, Math.max(10, diagonal * 0.045));
-  const polygon = simplified.length > 2 ? simplified.slice(0, -1) : simplified;
-
-  if (polygon.length === 3 && getPolygonArea(polygon) > 80) {
-    return [...polygon, polygon[0]];
-  }
-
-  if (polygon.length === 4 && getPolygonArea(polygon) > 120) {
-    const isRectangle = polygon.every((point, index) =>
-      isNearRightAngle(polygon[(index + polygon.length - 1) % polygon.length], point, polygon[(index + 1) % polygon.length])
-    );
-
-    if (isRectangle) {
-      return [
-        { x: bounds.x, y: bounds.y },
-        { x: bounds.x + bounds.width, y: bounds.y },
-        { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
-        { x: bounds.x, y: bounds.y + bounds.height },
-        { x: bounds.x, y: bounds.y }
-      ];
-    }
-
-    return [...polygon, polygon[0]];
-  }
-
-  const centerX = bounds.x + bounds.width / 2;
-  const centerY = bounds.y + bounds.height / 2;
-  const radii = points.map((point) => Math.hypot(point.x - centerX, point.y - centerY));
-  const averageRadius = radii.reduce((sum, value) => sum + value, 0) / radii.length;
-  const radiusVariance = radii.reduce((sum, value) => sum + Math.abs(value - averageRadius), 0) / radii.length;
-  const aspectRatio = bounds.width / Math.max(1, bounds.height);
-  const looksPolygonal = polygon.length >= 3 && polygon.length <= 5;
-
-  if (
-    !looksPolygonal &&
-    averageRadius > 12 &&
-    aspectRatio > 0.72 &&
-    aspectRatio < 1.38 &&
-    radiusVariance / Math.max(averageRadius, 1) < 0.2
-  ) {
-    return createCirclePoints(centerX, centerY, averageRadius);
-  }
-
-  return points;
-}
-
-function getGeometryLinearDirection(shape: GeometryLinearShape) {
-  const dx = shape.bxMm - shape.axMm;
-  const dy = shape.byMm - shape.ayMm;
-  const length = Math.hypot(dx, dy);
-
-  if (length <= 0.0001) {
-    return { dx: 1, dy: 0, length: 0 };
-  }
-
-  return {
-    dx: dx / length,
-    dy: dy / length,
-    length
-  };
-}
-
-function getGeometryAngleFromCenter(center: GeometryPointCoordinate, point: GeometryPointCoordinate) {
-  return Math.atan2(point.yMm - center.yMm, point.xMm - center.xMm);
-}
-
-function normalizeSignedAngleDelta(delta: number) {
-  let normalized = delta;
-
-  while (normalized <= -Math.PI) {
-    normalized += Math.PI * 2;
-  }
-
-  while (normalized > Math.PI) {
-    normalized -= Math.PI * 2;
-  }
-
-  return normalized;
-}
-
-function getGeometryArcRadiusPx(shape: Pick<GeometryArcShape, "radiusMm">) {
-  return mmToPx(shape.radiusMm);
-}
-
-function getGeometryArcPathData(center: GeometryPointCoordinate, radiusMm: number, startAngle: number, endAngle: number) {
-  const radiusPx = mmToPx(radiusMm);
-  const delta = Math.max(-Math.PI * 2, Math.min(Math.PI * 2, endAngle - startAngle));
-
-  if (Math.abs(delta) >= Math.PI * 2 - 0.001) {
-    const start = getGeometryPolarPoint(center, radiusPx, startAngle);
-    const mid = getGeometryPolarPoint(center, radiusPx, startAngle + Math.PI);
-    return {
-      radiusPx,
-      delta,
-      start,
-      end: start,
-      path: `M ${start.x} ${start.y} A ${radiusPx} ${radiusPx} 0 1 1 ${mid.x} ${mid.y} A ${radiusPx} ${radiusPx} 0 1 1 ${start.x} ${start.y}`
-    };
-  }
-
-  const start = getGeometryPolarPoint(center, radiusPx, startAngle);
-  const end = getGeometryPolarPoint(center, radiusPx, startAngle + delta);
-  const largeArcFlag = Math.abs(delta) > Math.PI ? 1 : 0;
-  const sweepFlag = delta >= 0 ? 1 : 0;
-
-  return {
-    radiusPx,
-    delta,
-    start,
-    end,
-    path: `M ${start.x} ${start.y} A ${radiusPx} ${radiusPx} 0 ${largeArcFlag} ${sweepFlag} ${end.x} ${end.y}`
-  };
-}
-
-function dedupeGeometryRenderPoints(points: Array<{ x: number; y: number; t: number }>) {
-  return points.filter(
-    (point, index) =>
-      points.findIndex(
-        (candidate) =>
-          Math.abs(candidate.x - point.x) < 0.5 &&
-          Math.abs(candidate.y - point.y) < 0.5 &&
-          Math.abs(candidate.t - point.t) < 0.0001
-      ) === index
-  );
-}
-
-function getRenderedLinearGeometryPx(shape: GeometryLinearShape, canvasWidth: number, canvasHeight: number) {
-  const ax = mmToPx(shape.axMm);
-  const ay = mmToPx(shape.ayMm);
-  const bx = mmToPx(shape.bxMm);
-  const by = mmToPx(shape.byMm);
-
-  if (shape.kind === "segment" || shape.kind === "graduated-line") {
-    return { x1: ax, y1: ay, x2: bx, y2: by };
-  }
-
-  const dx = bx - ax;
-  const dy = by - ay;
-
-  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
-    return null;
-  }
-
-  const candidates: Array<{ x: number; y: number; t: number }> = [];
-  const pushCandidate = (x: number, y: number, t: number) => {
-    if (x >= -0.5 && x <= canvasWidth + 0.5 && y >= -0.5 && y <= canvasHeight + 0.5) {
-      candidates.push({ x, y, t });
-    }
-  };
-
-  if (Math.abs(dx) > 0.001) {
-    const tLeft = (0 - ax) / dx;
-    pushCandidate(0, ay + tLeft * dy, tLeft);
-    const tRight = (canvasWidth - ax) / dx;
-    pushCandidate(canvasWidth, ay + tRight * dy, tRight);
-  }
-
-  if (Math.abs(dy) > 0.001) {
-    const tTop = (0 - ay) / dy;
-    pushCandidate(ax + tTop * dx, 0, tTop);
-    const tBottom = (canvasHeight - ay) / dy;
-    pushCandidate(ax + tBottom * dx, canvasHeight, tBottom);
-  }
-
-  const unique = dedupeGeometryRenderPoints(candidates).sort((left, right) => left.t - right.t);
-
-  if (shape.kind === "line") {
-    if (unique.length >= 2) {
-      const first = unique[0];
-      const last = unique[unique.length - 1];
-      return { x1: first.x, y1: first.y, x2: last.x, y2: last.y };
-    }
-
-    const direction = getGeometryLinearDirection(shape);
-    return {
-      x1: ax - direction.dx * GEOMETRY_LINE_EXTENT_PX,
-      y1: ay - direction.dy * GEOMETRY_LINE_EXTENT_PX,
-      x2: ax + direction.dx * GEOMETRY_LINE_EXTENT_PX,
-      y2: ay + direction.dy * GEOMETRY_LINE_EXTENT_PX
-    };
-  }
-
-  const insideCanvas = ax >= 0 && ax <= canvasWidth && ay >= 0 && ay <= canvasHeight;
-  const visibleCandidates = unique.filter((candidate) => candidate.t >= 0);
-
-  if (insideCanvas) {
-    const last = visibleCandidates[visibleCandidates.length - 1];
-
-    if (last) {
-      return { x1: ax, y1: ay, x2: last.x, y2: last.y };
-    }
-  }
-
-  if (visibleCandidates.length >= 2) {
-    const first = visibleCandidates[0];
-    const last = visibleCandidates[visibleCandidates.length - 1];
-    return { x1: first.x, y1: first.y, x2: last.x, y2: last.y };
-  }
-
-  const direction = getGeometryLinearDirection(shape);
-  return {
-    x1: ax,
-    y1: ay,
-    x2: ax + direction.dx * GEOMETRY_LINE_EXTENT_PX,
-    y2: ay + direction.dy * GEOMETRY_LINE_EXTENT_PX
-  };
-}
-
-function getGeometryShapeBoundsPx(shape: GeometryShape, canvasWidth: number, canvasHeight: number) {
-  if (shape.kind === "point") {
-    const radius = mmToPx(GEOMETRY_POINT_RADIUS_MM) + 10;
-    const x = mmToPx(shape.xMm);
-    const y = mmToPx(shape.yMm);
-    return {
-      x: x - radius,
-      y: y - radius,
-      width: radius * 2,
-      height: radius * 2
-    };
-  }
-
-  if (shape.kind === "circle") {
-    const radius = mmToPx(shape.radiusMm);
-    const x = mmToPx(shape.cxMm);
-    const y = mmToPx(shape.cyMm);
-    return {
-      x: x - radius,
-      y: y - radius,
-      width: radius * 2,
-      height: radius * 2
-    };
-  }
-
-  if (shape.kind === "arc") {
-    const radius = mmToPx(shape.radiusMm);
-    const x = mmToPx(shape.cxMm);
-    const y = mmToPx(shape.cyMm);
-    return {
-      x: x - radius,
-      y: y - radius,
-      width: radius * 2,
-      height: radius * 2
-    };
-  }
-
-  const rendered = getRenderedLinearGeometryPx(shape as GeometryLinearShape | GraduatedLineModalShape, canvasWidth, canvasHeight);
-
-  if (!rendered) {
-    const x = mmToPx(shape.axMm);
-    const y = mmToPx(shape.ayMm);
-    return { x, y, width: 1, height: 1 };
-  }
-
-  return {
-    x: Math.min(rendered.x1, rendered.x2),
-    y: Math.min(rendered.y1, rendered.y2),
-    width: Math.max(1, Math.abs(rendered.x2 - rendered.x1)),
-    height: Math.max(1, Math.abs(rendered.y2 - rendered.y1))
-  };
-}
-
-function translateGeometryShape(shape: GeometryShape, deltaXMm: number, deltaYMm: number): GeometryShape {
-  if (shape.kind === "point") {
-    return {
-      ...shape,
-      xMm: shape.xMm + deltaXMm,
-      yMm: shape.yMm + deltaYMm
-    };
-  }
-
-  if (shape.kind === "circle") {
-    return {
-      ...shape,
-      cxMm: shape.cxMm + deltaXMm,
-      cyMm: shape.cyMm + deltaYMm
-    };
-  }
-
-  if (shape.kind === "arc") {
-    return {
-      ...shape,
-      cxMm: shape.cxMm + deltaXMm,
-      cyMm: shape.cyMm + deltaYMm
-    };
-  }
-
-  return {
-    ...shape,
-    axMm: shape.axMm + deltaXMm,
-    ayMm: shape.ayMm + deltaYMm,
-    bxMm: shape.bxMm + deltaXMm,
-    byMm: shape.byMm + deltaYMm
-  };
-}
-
-function getGeometrySelectionMeasurement(shape: GeometryShape) {
-  if (shape.kind === "segment") {
-    return `${Math.round(Math.hypot(shape.bxMm - shape.axMm, shape.byMm - shape.ayMm))} mm`;
-  }
-
-  if (shape.kind === "circle") {
-    return `Ø ${Math.round(shape.radiusMm * 2)} mm`;
-  }
-
-  return null;
-}
-
-function getGraduatedLineSectionCount(value: string) {
-  const parsed = Number.parseInt(value.replace(/[^0-9]/g, ""), 10);
-
-  if (!Number.isFinite(parsed)) {
-    return 10;
-  }
-
-  return Math.max(1, Math.min(200, parsed));
-}
-
-function getGraduatedLineStartValue(value: string) {
-  const parsed = Number.parseInt(value.replace(/[^0-9-]/g, ""), 10);
-
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function getGraduatedLineEndpointLabel(shape: GeometryLinearShape, index: number) {
-  const sections = Math.max(1, Math.round(shape.sections ?? 10));
-  const startValue = Math.round(shape.startValue ?? 0);
-  return index === 0 ? startValue : startValue + sections;
-}
-
-function isGraduatedLineVertical(ax: number, ay: number, bx: number, by: number) {
-  return Math.abs(by - ay) > Math.abs(bx - ax);
-}
-
-function getGraduatedLineLabelPosition(ax: number, ay: number, bx: number, by: number, index: number) {
-  const labelOffset = 22;
-  const isVertical = isGraduatedLineVertical(ax, ay, bx, by);
-  const baseX = index === 0 ? ax : bx;
-  const baseY = index === 0 ? ay : by;
-
-  return isVertical
-    ? {
-        x: baseX + labelOffset,
-        y: baseY,
-        textAnchor: "start" as const,
-        dominantBaseline: "middle" as const
-      }
-    : {
-        x: baseX,
-        y: baseY - labelOffset,
-        textAnchor: "middle" as const,
-        dominantBaseline: "auto" as const
-      };
-}
-
-function getGraduatedLineTickLengthPx(index: number, sections: number) {
-  if (index === 0 || index === sections || index % 10 === 0) {
-    return 18;
-  }
-
-  if (index % 5 === 0) {
-    return 12;
-  }
-
-  return 8;
-}
-
-function getGraduatedLineTickStrokeWidth(index: number, sections: number) {
-  if (index === 0 || index === sections || index % 10 === 0) {
-    return 2;
-  }
-
-  if (index % 5 === 0) {
-    return 1.6;
-  }
-
-  return 1.2;
-}
-
-function getGraduatedLineDraftNormal(ax: number, ay: number, bx: number, by: number) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const length = Math.hypot(dx, dy) || 1;
-
-  return {
-    ux: dx / length,
-    uy: dy / length,
-    nx: dy / length,
-    ny: -dx / length
-  };
-}
-
-function getGraduatedLineTickPath(ax: number, ay: number, bx: number, by: number, index: number, sections: number) {
-  const progress = sections <= 0 ? 0 : index / sections;
-  const baseX = ax + (bx - ax) * progress;
-  const baseY = ay + (by - ay) * progress;
-  const { nx, ny } = getGraduatedLineDraftNormal(ax, ay, bx, by);
-  const length = getGraduatedLineTickLengthPx(index, sections);
-
-  return {
-    x1: baseX,
-    y1: baseY,
-    x2: baseX + nx * length,
-    y2: baseY + ny * length,
-    strokeWidth: getGraduatedLineTickStrokeWidth(index, sections)
-  };
-}
-
-function getGraduatedLineRenderTicks(shape: GeometryLinearShape, canvasWidth: number, canvasHeight: number) {
-  const rendered = getRenderedLinearGeometryPx(shape, canvasWidth, canvasHeight);
-
-  if (!rendered) {
-    return [];
-  }
-
-  const sections = Math.max(1, Math.round(shape.sections ?? 10));
-
-  return Array.from({ length: sections + 1 }, (_, index) => getGraduatedLineTickPath(rendered.x1, rendered.y1, rendered.x2, rendered.y2, index, sections));
-}
-
-function getGraduatedLineAxisLockedPoint(start: GeometryPointCoordinate, point: { xMm: number; yMm: number }, guides: { x: number | null; y: number | null }) {
-  const deltaX = Math.abs(point.xMm - start.xMm);
-  const deltaY = Math.abs(point.yMm - start.yMm);
-
-  if (deltaX >= deltaY) {
-    return {
-      xMm: point.xMm,
-      yMm: start.yMm,
-      guides: {
-        x: guides.x,
-        y: mmToPx(start.yMm)
-      }
-    };
-  }
-
-  return {
-    xMm: start.xMm,
-    yMm: point.yMm,
-    guides: {
-      x: mmToPx(start.xMm),
-      y: guides.y
-    }
-  };
-}
-
-function getGeometryAngleDegrees(vertex: GeometryPointCoordinate, baseline: GeometryPointCoordinate, end: GeometryPointCoordinate) {
-  const baselineAngle = Math.atan2(baseline.yMm - vertex.yMm, baseline.xMm - vertex.xMm);
-  const endAngle = Math.atan2(end.yMm - vertex.yMm, end.xMm - vertex.xMm);
-  let delta = Math.abs(((endAngle - baselineAngle) * 180) / Math.PI);
-
-  while (delta > 360) {
-    delta -= 360;
-  }
-
-  if (delta > 180) {
-    delta = 360 - delta;
-  }
-
-  return delta;
-}
-
-function getGeometrySignedAngleDelta(vertex: GeometryPointCoordinate, baseline: GeometryPointCoordinate, end: GeometryPointCoordinate) {
-  const baselineAngle = Math.atan2(baseline.yMm - vertex.yMm, baseline.xMm - vertex.xMm);
-  const endAngle = Math.atan2(end.yMm - vertex.yMm, end.xMm - vertex.xMm);
-  let delta = endAngle - baselineAngle;
-
-  while (delta <= -Math.PI) {
-    delta += Math.PI * 2;
-  }
-
-  while (delta > Math.PI) {
-    delta -= Math.PI * 2;
-  }
-
-  return delta;
-}
-
-function getGeometryProtractorRadiusPx(vertex: GeometryPointCoordinate, baseline: GeometryPointCoordinate, end: GeometryPointCoordinate) {
-  const baselineLength = Math.hypot(mmToPx(baseline.xMm - vertex.xMm), mmToPx(baseline.yMm - vertex.yMm));
-  const endLength = Math.hypot(mmToPx(end.xMm - vertex.xMm), mmToPx(end.yMm - vertex.yMm));
-
-  return Math.max(42, Math.min(96, Math.min(baselineLength, endLength) * 0.72));
-}
-
-function getGeometryPolarPoint(vertex: GeometryPointCoordinate, radiusPx: number, angle: number) {
-  return {
-    x: mmToPx(vertex.xMm) + Math.cos(angle) * radiusPx,
-    y: mmToPx(vertex.yMm) + Math.sin(angle) * radiusPx
-  };
-}
-
-function getGeometryProtractorPaths(vertex: GeometryPointCoordinate, baseline: GeometryPointCoordinate, end: GeometryPointCoordinate) {
-  const baselineAngle = Math.atan2(baseline.yMm - vertex.yMm, baseline.xMm - vertex.xMm);
-  const delta = getGeometrySignedAngleDelta(vertex, baseline, end);
-  const radius = getGeometryProtractorRadiusPx(vertex, baseline, end);
-  const outerStart = getGeometryPolarPoint(vertex, radius, baselineAngle);
-  const outerEnd = getGeometryPolarPoint(vertex, radius, baselineAngle + (delta >= 0 ? Math.PI : -Math.PI));
-  const arcEnd = getGeometryPolarPoint(vertex, radius, baselineAngle + delta);
-  const largeArcFlag = Math.abs(delta) > Math.PI ? 1 : 0;
-  const sweepFlag = delta >= 0 ? 1 : 0;
-  const semiSweepFlag = delta >= 0 ? 1 : 0;
-  const centerX = mmToPx(vertex.xMm);
-  const centerY = mmToPx(vertex.yMm);
-
-  return {
-    radius,
-    baselineAngle,
-    protractorPath: `M ${centerX} ${centerY} L ${outerStart.x} ${outerStart.y} A ${radius} ${radius} 0 0 ${semiSweepFlag} ${outerEnd.x} ${outerEnd.y} Z`,
-    measuredArcPath: `M ${getGeometryPolarPoint(vertex, radius - 8, baselineAngle).x} ${getGeometryPolarPoint(vertex, radius - 8, baselineAngle).y} A ${radius - 8} ${radius - 8} 0 ${largeArcFlag} ${sweepFlag} ${arcEnd.x} ${arcEnd.y}`
-  };
-}
-
-function isGeometryConstructionTool(tool: GeometryTool | null) {
-  return tool === "point" || tool === "segment" || tool === "line" || tool === "ray" || tool === "circle" || tool === "compass";
-}
-
-function getSnapPointOnRayPx(pointX: number, pointY: number, vertex: GeometryPointCoordinate, rayPoint: GeometryPointCoordinate) {
-  const vx = mmToPx(vertex.xMm);
-  const vy = mmToPx(vertex.yMm);
-  const rx = mmToPx(rayPoint.xMm);
-  const ry = mmToPx(rayPoint.yMm);
-  const dx = rx - vx;
-  const dy = ry - vy;
-  const lengthSquared = dx * dx + dy * dy;
-
-  if (lengthSquared <= 0.0001) {
-    return null;
-  }
-
-  const projection = ((pointX - vx) * dx + (pointY - vy) * dy) / lengthSquared;
-  const clampedProjection = Math.max(0, projection);
-
-  return {
-    x: vx + dx * clampedProjection,
-    y: vy + dy * clampedProjection,
-    distance: Math.hypot(pointX - (vx + dx * clampedProjection), pointY - (vy + dy * clampedProjection))
-  };
-}
-
-function getSnapPointOnLinePx(pointX: number, pointY: number, vertex: GeometryPointCoordinate, linePoint: GeometryPointCoordinate) {
-  const vx = mmToPx(vertex.xMm);
-  const vy = mmToPx(vertex.yMm);
-  const lx = mmToPx(linePoint.xMm);
-  const ly = mmToPx(linePoint.yMm);
-  const dx = lx - vx;
-  const dy = ly - vy;
-  const lengthSquared = dx * dx + dy * dy;
-
-  if (lengthSquared <= 0.0001) {
-    return null;
-  }
-
-  const projection = ((pointX - vx) * dx + (pointY - vy) * dy) / lengthSquared;
-
-  return {
-    x: vx + dx * projection,
-    y: vy + dy * projection,
-    distance: Math.hypot(pointX - (vx + dx * projection), pointY - (vy + dy * projection))
-  };
-}
-
-function cloneWriterState(value: WriterState) {
-  return JSON.parse(JSON.stringify(value)) as WriterState;
-}
-
-function areWriterStatesEqual(left: WriterState, right: WriterState) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function getGridDimensions(count: number, columns: number) {
-  return {
-    columns,
-    rows: Math.ceil(count / columns)
-  };
-}
-
-function getRemPixels() {
-  if (typeof window === "undefined") {
-    return 16;
-  }
-
-  return Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
-}
-
-function parseStoredState(raw: string, fallbackSheetStyle: SheetStyle, labels: DefaultDocumentLabels): WriterState | null {
-  try {
-    const parsed = JSON.parse(raw) as WriterState;
-    const parsedSchemaVersion =
-      typeof (parsed as { schemaVersion?: unknown }).schemaVersion === "number"
-        ? (parsed as { schemaVersion: number }).schemaVersion
-        : 1;
-    const parsedSheetStyle =
-      (parsed as { sheetStyle?: unknown }).sheetStyle === "large-grid" ||
-      (parsed as { sheetStyle?: unknown }).sheetStyle === "small-grid" ||
-      (parsed as { sheetStyle?: unknown }).sheetStyle === "lined" ||
-      (parsed as { sheetStyle?: unknown }).sheetStyle === "blank" ||
-      (parsed as { sheetStyle?: unknown }).sheetStyle === "seyes"
-        ? (parsed as { sheetStyle: SheetStyle }).sheetStyle
-        : createDefaultState(fallbackSheetStyle, labels).sheetStyle;
-    const defaultState = createDefaultState(parsedSheetStyle, labels);
-    const defaultFontSize = getDefaultCanvasFontSize(parsedSheetStyle);
-    const defaultNoteFontSize = getDefaultNoteFontSize(parsedSheetStyle);
-
-    if (
-      typeof parsed.title !== "string" ||
-      (parsed.mode !== "middleSchool" && parsed.mode !== "highSchool") ||
-      typeof parsed.textHtml !== "string" ||
-      !Array.isArray(parsed.blocks)
-    ) {
-      return null;
-    }
-
-    return {
-      ...parsed,
-      schemaVersion: WRITER_STATE_SCHEMA_VERSION,
-      sheetStyle: parsedSheetStyle,
-      activeColor: typeof (parsed as { activeColor?: unknown }).activeColor === "string" ? parsed.activeColor : DEFAULT_ACTIVE_COLOR,
-      activeHighlightColor:
-        typeof (parsed as { activeHighlightColor?: unknown }).activeHighlightColor === "string"
-          ? parsed.activeHighlightColor
-          : defaultState.activeHighlightColor,
-      blocks: parsed.blocks.map((block) => ({
-        ...block,
-        ...(block.type === "division"
-          ? {
-              work:
-                typeof (block as { work?: unknown }).work === "string"
-                  ? (block as { work: string }).work
-                  : [(block as { dividend?: string }).dividend ?? "", (block as { remainder?: string }).remainder ?? ""]
-                      .filter((line) => typeof line === "string" && line.trim().length > 0)
-                      .join("\n"),
-              struckCells: normalizeStruckCells((block as { struckCells?: unknown }).struckCells)
-            }
-          : {}),
-        ...(block.type === "addition" || block.type === "subtraction" || block.type === "multiplication"
-          ? {
-              carryTop:
-                migrateArithmeticCarryCells(
-                  typeof (block as { carryTop?: unknown }).carryTop !== "undefined"
-                    ? (block as { carryTop?: unknown }).carryTop
-                    : (block as { carry?: unknown }).carry,
-                  parsedSchemaVersion
-                ),
-              carryBottom: migrateArithmeticCarryCells((block as { carryBottom?: unknown }).carryBottom, parsedSchemaVersion),
-              carryResult: migrateArithmeticCarryCells((block as { carryResult?: unknown }).carryResult, parsedSchemaVersion),
-              struckCells: normalizeStruckCells((block as { struckCells?: unknown }).struckCells)
-            }
-          : {}),
-        color: typeof (block as { color?: unknown }).color === "string" ? (block as { color: string }).color : DEFAULT_ACTIVE_COLOR,
-        fontSize: typeof (block as { fontSize?: unknown }).fontSize === "number" ? (block as { fontSize: number }).fontSize : defaultFontSize,
-        fontWeight: typeof (block as { fontWeight?: unknown }).fontWeight === "number" ? (block as { fontWeight: number }).fontWeight : 500,
-        fontStyle: (block as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal",
-        underline: (block as { underline?: unknown }).underline === true,
-        highlightColor: typeof (block as { highlightColor?: unknown }).highlightColor === "string" ? (block as { highlightColor: string }).highlightColor : null
-      })),
-      symbols: Array.isArray(parsed.symbols)
-        ? parsed.symbols.map((symbol) => ({
-            ...symbol,
-            kind:
-              (symbol as { kind?: unknown }).kind === "sum"
-                ? "sum"
-                : (symbol as { kind?: unknown }).kind === "integral"
-                  ? "integral"
-                  : "text",
-            size:
-              typeof (symbol as { size?: unknown }).size === "number"
-                ? (symbol as { size: number }).size
-                : (symbol as { kind?: unknown }).kind === "sum"
-                  ? DEFAULT_SUM_SYMBOL_SIZE
-                  : (symbol as { kind?: unknown }).kind === "integral"
-                    ? DEFAULT_INTEGRAL_SYMBOL_SIZE
-                    : undefined,
-            color: typeof symbol.color === "string" ? symbol.color : DEFAULT_ACTIVE_COLOR,
-            fontSize: typeof symbol.fontSize === "number" ? symbol.fontSize : defaultFontSize,
-            fontWeight: typeof (symbol as { fontWeight?: unknown }).fontWeight === "number" ? (symbol as { fontWeight: number }).fontWeight : 500,
-            fontStyle: (symbol as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal",
-            underline: (symbol as { underline?: unknown }).underline === true,
-            highlightColor: typeof (symbol as { highlightColor?: unknown }).highlightColor === "string" ? (symbol as { highlightColor: string }).highlightColor : null
-          }))
-        : [],
-      textBoxes: Array.isArray((parsed as { textBoxes?: unknown }).textBoxes)
-        ? (parsed as { textBoxes: FloatingTextBox[] }).textBoxes.map((textBox) => ({
-            ...textBox,
-            color: typeof textBox.color === "string" ? textBox.color : DEFAULT_ACTIVE_COLOR,
-            fontSize: typeof textBox.fontSize === "number" ? textBox.fontSize : textBox.variant === "note" ? defaultNoteFontSize : defaultFontSize,
-            fontWeight: typeof (textBox as { fontWeight?: unknown }).fontWeight === "number" ? (textBox as { fontWeight: number }).fontWeight : 500,
-            fontStyle: (textBox as { fontStyle?: unknown }).fontStyle === "italic" ? "italic" : "normal",
-            underline: (textBox as { underline?: unknown }).underline === true,
-            highlightColor: typeof (textBox as { highlightColor?: unknown }).highlightColor === "string" ? (textBox as { highlightColor: string }).highlightColor : null
-          }))
-        : [],
-      strokes: Array.isArray((parsed as { strokes?: unknown }).strokes)
-        ? (parsed as { strokes: FreehandStroke[] }).strokes.filter(
-            (stroke) =>
-              Boolean(stroke) &&
-              typeof stroke.id === "string" &&
-              Array.isArray(stroke.points) &&
-              stroke.points.every((point) => point && typeof point.x === "number" && typeof point.y === "number")
-          ).map((stroke) => ({
-            ...stroke,
-            color: typeof stroke.color === "string" ? stroke.color : DEFAULT_ACTIVE_COLOR,
-            width: typeof stroke.width === "number" ? stroke.width : 2.6,
-            opacity: typeof (stroke as { opacity?: unknown }).opacity === "number" ? (stroke as { opacity: number }).opacity : 1
-          }))
-        : [],
-      geometry: Array.isArray((parsed as { geometry?: unknown }).geometry)
-        ? (parsed as { geometry: GeometryShape[] }).geometry
-            .filter((shape) => Boolean(shape) && typeof shape.id === "string" && typeof shape.type === "string" && shape.type === "geometry")
-            .reduce<GeometryShape[]>((accumulator, shape) => {
-              if (shape.kind === "point") {
-                if (typeof shape.xMm === "number" && typeof shape.yMm === "number") {
-                  accumulator.push({
-                    ...shape,
-                    label: typeof shape.label === "string" ? shape.label : "",
-                    color: typeof shape.color === "string" ? shape.color : DEFAULT_ACTIVE_COLOR,
-                    strokeWidthMm: typeof shape.strokeWidthMm === "number" ? shape.strokeWidthMm : DEFAULT_GEOMETRY_STROKE_WIDTH_MM
-                  } satisfies GeometryPointShape);
-                }
-
-                return accumulator;
-              }
-
-              if (shape.kind === "circle") {
-                if (typeof shape.cxMm === "number" && typeof shape.cyMm === "number" && typeof shape.radiusMm === "number") {
-                  accumulator.push({
-                    ...shape,
-                    color: typeof shape.color === "string" ? shape.color : DEFAULT_ACTIVE_COLOR,
-                    radiusMm: Math.max(0.5, shape.radiusMm),
-                    strokeWidthMm: typeof shape.strokeWidthMm === "number" ? shape.strokeWidthMm : DEFAULT_GEOMETRY_STROKE_WIDTH_MM
-                  } satisfies GeometryCircleShape);
-                }
-
-                return accumulator;
-              }
-
-              if (shape.kind === "arc") {
-                if (
-                  typeof shape.cxMm === "number" &&
-                  typeof shape.cyMm === "number" &&
-                  typeof shape.radiusMm === "number" &&
-                  typeof shape.startAngle === "number" &&
-                  typeof shape.endAngle === "number"
-                ) {
-                  accumulator.push({
-                    ...shape,
-                    color: typeof shape.color === "string" ? shape.color : DEFAULT_ACTIVE_COLOR,
-                    radiusMm: Math.max(0.5, shape.radiusMm),
-                    strokeWidthMm: typeof shape.strokeWidthMm === "number" ? shape.strokeWidthMm : DEFAULT_GEOMETRY_STROKE_WIDTH_MM
-                  } satisfies GeometryArcShape);
-                }
-
-                return accumulator;
-              }
-
-              if (
-                typeof shape.axMm === "number" &&
-                typeof shape.ayMm === "number" &&
-                typeof shape.bxMm === "number" &&
-                typeof shape.byMm === "number"
-              ) {
-                accumulator.push({
-                  ...shape,
-                  startValue: typeof (shape as { startValue?: unknown }).startValue === "number" ? (shape as { startValue: number }).startValue : 0,
-                  sections:
-                    shape.kind === "graduated-line"
-                      ? typeof (shape as { sections?: unknown }).sections === "number"
-                        ? Math.max(1, Math.round((shape as { sections: number }).sections))
-                        : 10
-                      : typeof (shape as { sections?: unknown }).sections === "number"
-                        ? (shape as { sections: number }).sections
-                        : undefined,
-                  color: typeof shape.color === "string" ? shape.color : DEFAULT_ACTIVE_COLOR,
-                  strokeWidthMm: typeof shape.strokeWidthMm === "number" ? shape.strokeWidthMm : DEFAULT_GEOMETRY_STROKE_WIDTH_MM
-                } satisfies GeometryLinearShape);
-              }
-
-              return accumulator;
-            }, [])
-        : []
-    };
-  } catch {
-    return null;
-  }
-}
-
-function getBlockTitle(block: MathBlock, blockTitles: ReturnType<typeof createWorkbookUi>["blockTitles"]) {
-  switch (block.type) {
-    case "fraction":
-      return blockTitles.fraction;
-    case "addition":
-      return blockTitles.addition;
-    case "subtraction":
-      return blockTitles.subtraction;
-    case "multiplication":
-      return blockTitles.multiplication;
-    case "division":
-      return blockTitles.division;
-    case "power":
-      return blockTitles.power;
-    case "root":
-      return blockTitles.root;
-    default:
-      return blockTitles.default;
-  }
-}
-
-function getDefaultWidth(type: MathBlock["type"]) {
-  switch (type) {
-    case "addition":
-    case "subtraction":
-    case "multiplication":
-      return 250;
-    case "division":
-      return 320;
-    case "fraction":
-      return 260;
-    case "power":
-      return 220;
-    case "root":
-      return 230;
-    default:
-      return 260;
-  }
-}
-
-function getDivisionWorkLines(work: string) {
-  const lines = work.split("\n");
-  return lines.length > 0 ? lines : [""];
-}
-
-function getDivisionQuotientDigits(quotient: string) {
-  const digitsOnly = quotient.replace(/\D+/g, "");
-  return Math.max(1, digitsOnly.length);
-}
-
-function getCellTextLength(value: string) {
-  return value.replace(/\s+$/g, "").length;
-}
-
-function normalizeDivisionDecimalInput(value: string) {
-  const normalized = value.replace(/\./g, ",").replace(/[^0-9, ]/g, "");
-  const firstCommaIndex = normalized.indexOf(",");
-
-  if (firstCommaIndex === -1) {
-    return normalized.replace(/\s+$/g, "");
-  }
-
-  return `${normalized.slice(0, firstCommaIndex + 1)}${normalized.slice(firstCommaIndex + 1).replace(/,/g, "")}`.replace(/\s+$/g, "");
-}
-
-function getDivisionMaxWorkLines(quotient: string) {
-  return Math.max(8, getDivisionQuotientDigits(quotient) * 2 + 1);
-}
-
-function getDivisionVisibleWorkLines(work: string, quotient: string) {
-  const rawLines = getDivisionWorkLines(work);
-  const maxLines = getDivisionMaxWorkLines(quotient);
-  let completedPrefix = 0;
-
-  while (completedPrefix < maxLines && (rawLines[completedPrefix] ?? "").trim().length > 0) {
-    completedPrefix += 1;
-  }
-
-  const visibleCount = Math.min(maxLines, Math.max(1, completedPrefix + 1));
-  return Array.from({ length: visibleCount }, (_, index) => rawLines[index] ?? "");
-}
-
-function setDivisionWorkLine(work: string, lineIndex: number, value: string) {
-  const lines = getDivisionWorkLines(work);
-
-  while (lines.length <= lineIndex) {
-    lines.push("");
-  }
-
-  lines[lineIndex] = value;
-
-  while (lines.length > 1 && lines[lines.length - 1] === "") {
-    lines.pop();
-  }
-
-  return lines.join("\n");
-}
-
-function serializeDivisionWorkLines(lines: string[]) {
-  const nextLines = [...lines];
-
-  while (nextLines.length > 1 && nextLines[nextLines.length - 1] === "") {
-    nextLines.pop();
-  }
-
-  return nextLines.join("\n");
-}
-
-function getDivisionCellValue(value: string, index: number) {
-  return Array.from(value)[index] ?? "";
-}
-
-function setDivisionCellValue(value: string, index: number, nextCharacter: string) {
-  const characters = Array.from(value);
-
-  while (characters.length <= index) {
-    characters.push("");
-  }
-
-  characters[index] = nextCharacter;
-
-  while (characters.length > 0 && characters[characters.length - 1] === "") {
-    characters.pop();
-  }
-
-  return characters.join("");
-}
-
-function setDivisionCellValues(value: string, startIndex: number, nextCharacters: string[], maxColumns: number) {
-  const characters = Array.from(value);
-  let insertedCount = 0;
-
-  nextCharacters.forEach((nextCharacter, offset) => {
-    const targetIndex = startIndex + offset;
-
-    if (targetIndex >= maxColumns) {
-      return;
-    }
-
-    while (characters.length <= targetIndex) {
-      characters.push("");
-    }
-
-    characters[targetIndex] = nextCharacter;
-    insertedCount += 1;
-  });
-
-  while (characters.length > 0 && characters[characters.length - 1] === "") {
-    characters.pop();
-  }
-
-  return {
-    value: characters.join(""),
-    insertedCount
-  };
-}
-
-function getDivisionLeftColumns(block: DivisionBlock) {
-  const workLines = getDivisionWorkLines(block.work);
-  return Math.max(1, getCellTextLength(block.dividend), ...workLines.map((line) => getCellTextLength(line)));
-}
-
-function getDivisionDivisorColumns(block: DivisionBlock) {
-  return Math.max(1, getCellTextLength(block.divisor));
-}
-
-function getDivisionQuotientColumns(block: DivisionBlock) {
-  return Math.max(1, getCellTextLength(block.quotient));
-}
-
-function isColumnArithmeticBlock(block: MathBlock): block is AdditionBlock | SubtractionBlock | MultiplicationBlock {
-  return block.type === "addition" || block.type === "subtraction" || block.type === "multiplication";
-}
-
-function isCellStrikeBlock(block: MathBlock): block is AdditionBlock | SubtractionBlock | MultiplicationBlock | DivisionBlock {
-  return isColumnArithmeticBlock(block) || block.type === "division";
-}
-
-function getArithmeticOperator(block: AdditionBlock | SubtractionBlock | MultiplicationBlock) {
-  return block.type === "addition" ? "+" : block.type === "subtraction" ? "-" : "×";
-}
-
-type ArithmeticLineField = "top" | "bottom" | "result";
-type ArithmeticCarryField = "carryTop" | "carryBottom" | "carryResult";
-
-function getCarryFieldForArithmeticLine(field: ArithmeticLineField): ArithmeticCarryField {
-  if (field === "top") {
-    return "carryTop";
-  }
-
-  if (field === "bottom") {
-    return "carryBottom";
-  }
-
-  return "carryResult";
-}
-
-function getArithmeticLineForCarryField(field: ArithmeticCarryField): ArithmeticLineField {
-  if (field === "carryTop") {
-    return "top";
-  }
-
-  if (field === "carryBottom") {
-    return "bottom";
-  }
-
-  return "result";
-}
-
-function normalizeArithmeticCarryCells(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.map((item) => (typeof item === "string" ? item.slice(-1) : "")).filter((item, index, array) => item !== "" || index < array.length - 1);
-  }
-
-  if (typeof value === "string") {
-    return Array.from(value.replace(/\s+/g, "")).map((item) => item.slice(-1));
-  }
-
-  return [] as string[];
-}
-
-function migrateArithmeticCarryCells(value: unknown, schemaVersion: number) {
-  const normalized = normalizeArithmeticCarryCells(value);
-  return schemaVersion < WRITER_STATE_SCHEMA_VERSION ? [...normalized].reverse() : normalized;
-}
-
-function normalizeStruckCells(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [] as string[];
-  }
-
-  return Array.from(new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0)));
-}
-
-function getStruckCellKey(field: string, cellIndex: number) {
-  return `${field}::${cellIndex}`;
-}
-
-function hasStruckCell(struckCells: string[], field: string, cellIndex: number) {
-  return struckCells.includes(getStruckCellKey(field, cellIndex));
-}
-
-function toggleStruckCell(struckCells: string[], field: string, cellIndex: number) {
-  const key = getStruckCellKey(field, cellIndex);
-
-  if (struckCells.includes(key)) {
-    return struckCells.filter((item) => item !== key);
-  }
-
-  return [...struckCells, key];
-}
-
-function getStrokeStyleForTool(tool: AdvancedTool, activeColor: string, activeHighlightColor: string | null) {
-  if (tool === "highlight") {
-    return {
-      color: activeHighlightColor || DEFAULT_HIGHLIGHT_TOOL_COLOR,
-      width: HIGHLIGHT_STROKE_WIDTH,
-      opacity: HIGHLIGHT_STROKE_OPACITY
-    };
-  }
-
-  return {
-    color: activeColor,
-    width: 2.6,
-    opacity: 1
-  };
-}
-
-function hasArithmeticCarryCells(cells: string[]) {
-  return cells.some((cell) => cell.trim().length > 0);
-}
-
-function getArithmeticCarryCells(block: AdditionBlock | SubtractionBlock | MultiplicationBlock, line: ArithmeticLineField) {
-  return block[getCarryFieldForArithmeticLine(line)];
-}
-
-function getArithmeticCarryCell(cells: string[], cellIndex: number) {
-  return cells[cellIndex] ?? "";
-}
-
-function getLastFilledArithmeticCarryOffset(cells: string[]) {
-  for (let index = cells.length - 1; index >= 0; index -= 1) {
-    if ((cells[index] ?? "").trim().length > 0) {
-      return index;
-    }
-  }
-
-  return null;
-}
-
-function setArithmeticCarryCell(cells: string[], cellIndex: number, nextValue: string) {
-  const nextCells = [...cells];
-
-  while (nextCells.length <= cellIndex) {
-    nextCells.push("");
-  }
-
-  nextCells[cellIndex] = nextValue.slice(-1);
-
-  while (nextCells.length > 0 && nextCells[nextCells.length - 1] === "") {
-    nextCells.pop();
-  }
-
-  return nextCells;
-}
-
-function getColumnArithmeticColumns(block: AdditionBlock | SubtractionBlock | MultiplicationBlock) {
-  return Math.max(
-    1,
-    getCellTextLength(block.top),
-    getCellTextLength(block.bottom),
-    getCellTextLength(block.result),
-    block.carryTop.length,
-    block.carryBottom.length,
-    block.carryResult.length
-  );
-}
-
-function getAlignedCaretCellIndex(value: string, columns: number, align: "start" | "end", caretPosition: number) {
-  const characters = Array.from(value);
-  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
-  return Math.max(0, Math.min(columns - 1, offset + caretPosition));
-}
-
-function getAlignedCellSelectionRange(
-  value: string,
-  columns: number,
-  align: "start" | "end",
-  cellIndex: number
-) {
-  const characters = Array.from(value);
-  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
-  const visualIndex = align === "end" ? columns - 1 - cellIndex : cellIndex;
-  const characterIndex = visualIndex - offset;
-
-  if (characterIndex < 0) {
-    return { start: 0, end: 0 };
-  }
-
-  if (characterIndex >= characters.length) {
-    return { start: characters.length, end: characters.length };
-  }
-
-  return { start: characterIndex, end: characterIndex + 1 };
-}
-
-function getAlignedCellCharacter(
-  value: string,
-  columns: number,
-  align: "start" | "end",
-  cellIndex: number
-) {
-  const characters = Array.from(value);
-  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
-  const visualIndex = align === "end" ? columns - 1 - cellIndex : cellIndex;
-  return characters[visualIndex - offset] ?? "";
-}
-
-function setAlignedCellCharacter(
-  value: string,
-  columns: number,
-  align: "start" | "end",
-  cellIndex: number,
-  nextCharacter: string
-) {
-  const characters = Array.from(value);
-  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
-  const visualIndex = align === "end" ? columns - 1 - cellIndex : cellIndex;
-  const cells = Array.from({ length: columns }, (_, index) => characters[index - offset] ?? "");
-
-  cells[visualIndex] = nextCharacter;
-
-  const nextValue = cells.join("");
-  return normalizeDivisionDecimalInput(nextValue);
-}
-
-type DivisionCellRowOptions = {
-  field?: string;
-  struckCells?: string[];
-  onCellToggle?: (cellIndex: number, cellValue: string) => void;
-};
-
-function renderDivisionCellRow(
-  value: string,
-  columns: number,
-  className: string,
-  align: "start" | "end" = "start",
-  targetCellIndex?: number,
-  options?: DivisionCellRowOptions
-) {
-  const characters = Array.from(value);
-  const offset = align === "end" ? Math.max(0, columns - characters.length) : 0;
-
-  return (
-    <div className={`division-cell-row ${className}`} style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}>
-      {Array.from({ length: columns }).map((_, index) => {
-        const cellValue = characters[index - offset] ?? "";
-        const cellIndex = align === "end" ? columns - 1 - index : index;
-        const isStruck = options?.field ? hasStruckCell(options.struckCells ?? [], options.field, cellIndex) : false;
-        const cellClassName = `division-cell ${targetCellIndex === index ? "division-cell-target" : ""} ${isStruck ? "division-cell-struck" : ""} ${options?.onCellToggle ? "division-cell-button" : ""}`;
-
-        if (!options?.onCellToggle) {
-          return (
-            <span key={index} className={cellClassName}>
-              {cellValue}
-            </span>
-          );
-        }
-
-        return (
-          <button
-            key={index}
-            type="button"
-            className={cellClassName}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              options.onCellToggle?.(cellIndex, cellValue);
-            }}
-            onTouchStart={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              options.onCellToggle?.(cellIndex, cellValue);
-            }}
-          >
-            {cellValue}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function renderArithmeticCarryRow(
-  cells: string[],
-  columns: number,
-  className: string,
-  targetCellIndex?: number,
-  options?: DivisionCellRowOptions
-) {
-  return (
-    <div className={`division-cell-row ${className}`} style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}>
-      {Array.from({ length: columns }).map((_, index) => {
-        const cellValue = getArithmeticCarryCell(cells, index);
-        const isStruck = options?.field ? hasStruckCell(options.struckCells ?? [], options.field, index) : false;
-        const cellClassName = `division-cell addition-carry-cell ${targetCellIndex === index ? "division-cell-target" : ""} ${isStruck ? "division-cell-struck" : ""} ${options?.onCellToggle ? "division-cell-button" : ""}`;
-
-        if (!options?.onCellToggle) {
-          return (
-            <span key={index} className={cellClassName}>
-              {cellValue}
-            </span>
-          );
-        }
-
-        return (
-          <button
-            key={index}
-            type="button"
-            className={cellClassName}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              options.onCellToggle?.(index, cellValue);
-            }}
-            onTouchStart={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              options.onCellToggle?.(index, cellValue);
-            }}
-          >
-            {cellValue}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function renderColumnArithmeticPreview(block: AdditionBlock | SubtractionBlock | MultiplicationBlock) {
-  const columns = getColumnArithmeticColumns(block);
-  const operator = getArithmeticOperator(block);
-  const renderCarryOverlay = (line: ArithmeticLineField) => {
-    const carryCells = getArithmeticCarryCells(block, line);
-    const carryField = getCarryFieldForArithmeticLine(line);
-
-    if (!hasArithmeticCarryCells(carryCells)) {
-      return null;
-    }
-
-    return (
-      <div className="addition-line addition-line-carry">
-        <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-        {renderArithmeticCarryRow(carryCells, columns, "addition-row addition-carry-row addition-row-preview", undefined, {
-          field: carryField,
-          struckCells: block.struckCells
-        })}
-      </div>
-    );
-  };
-  const topCarryOverlay = renderCarryOverlay("top");
-  const bottomCarryOverlay = renderCarryOverlay("bottom");
-  const resultCarryOverlay = renderCarryOverlay("result");
-
-  return (
-    <div className="math-layout addition-layout">
-      <div className="addition-preview">
-        <div className={`addition-line-stack ${topCarryOverlay ? "addition-line-stack-with-carry" : ""}`}>
-          {topCarryOverlay ? <div className="addition-line-carry-overlay">{topCarryOverlay}</div> : null}
-          <div className="addition-line">
-            <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-            {renderDivisionCellRow(block.top, columns, "addition-row addition-row-preview", "start", undefined, { field: "top", struckCells: block.struckCells })}
-          </div>
-        </div>
-        <div className={`addition-line-stack ${bottomCarryOverlay ? "addition-line-stack-with-carry" : ""}`}>
-          {bottomCarryOverlay ? <div className="addition-line-carry-overlay">{bottomCarryOverlay}</div> : null}
-          <div className="addition-line">
-            <span className="addition-sign">{operator}</span>
-            {renderDivisionCellRow(block.bottom, columns, "addition-row addition-row-operation addition-row-preview", "start", undefined, { field: "bottom", struckCells: block.struckCells })}
-          </div>
-        </div>
-        <div className={`addition-line-stack ${resultCarryOverlay ? "addition-line-stack-with-carry" : ""}`}>
-          {resultCarryOverlay ? <div className="addition-line-carry-overlay">{resultCarryOverlay}</div> : null}
-          <div className="addition-line">
-            <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-            {renderDivisionCellRow(block.result, columns, "addition-row addition-row-result addition-row-preview", "start", undefined, { field: "result", struckCells: block.struckCells })}
-          </div>
-        </div>
-      </div>
-      {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-    </div>
-  );
-}
-
-function renderMathPreview(block: MathBlock) {
-  if (block.type === "fraction") {
-    return (
-      <div className="math-layout fraction-layout">
-        <div className="fraction-preview">
-          <div className="fraction-line top">{block.numerator || "numérateur"}</div>
-          <div className="fraction-bar" />
-          <div className="fraction-line">{block.denominator || "dénominateur"}</div>
-        </div>
-        {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-      </div>
-    );
-  }
-
-  if (isColumnArithmeticBlock(block)) {
-    return renderColumnArithmeticPreview(block);
-  }
-
-  if (block.type === "division") {
-    const leftColumns = getDivisionLeftColumns(block);
-    const divisorColumns = getDivisionDivisorColumns(block);
-    const quotientColumns = getDivisionQuotientColumns(block);
-    const workLines = getDivisionVisibleWorkLines(block.work, block.quotient);
-    return (
-      <div className="math-layout division-layout">
-        <div className="division-preview">
-          <div className="division-left-column">
-            <div className="division-work-line division-work-line-head">
-              <span className="division-work-minus division-work-minus-spacer" aria-hidden="true" />
-              {renderDivisionCellRow(block.dividend, leftColumns, "division-dividend division-row-preview", "start", undefined, { field: "dividend", struckCells: block.struckCells })}
-            </div>
-              <div className="division-work-grid">
-                {workLines.map((line, index) => (
-                  (() => {
-                    if (index % 2 === 0 && line.trim().length === 0) {
-                      return null;
-                    }
-
-                    const shouldShowResultLine = index % 2 === 0 && (workLines[index + 1] ?? "").trim().length > 0;
-                    return (
-                  <div
-                    key={index}
-                    className={`division-work-line ${index % 2 === 0 ? "division-work-line-operation" : "division-work-line-result"} ${shouldShowResultLine ? "division-work-line-operation-complete" : ""} ${line.trim().length === 0 ? "division-work-line-pending" : ""}`}
-                  >
-                    {index % 2 === 0 ? <span className="division-work-minus">-</span> : <span className="division-work-minus division-work-minus-spacer" aria-hidden="true" />}
-                    {renderDivisionCellRow(line, leftColumns, "division-workpad division-row-preview", "start", undefined, { field: `work:${index}`, struckCells: block.struckCells })}
-                  </div>
-                    );
-                  })()
-                ))}
-              </div>
-          </div>
-          <div className="division-right-column">
-            {renderDivisionCellRow(block.divisor, divisorColumns, "division-divisor division-row-preview", "start", undefined, { field: "divisor", struckCells: block.struckCells })}
-            {renderDivisionCellRow(block.quotient, quotientColumns, "division-quotient division-row-preview", "start", undefined, { field: "quotient", struckCells: block.struckCells })}
-          </div>
-        </div>
-        {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-      </div>
-    );
-  }
-
-  if (block.type === "power") {
-    return (
-      <div className="math-layout power-layout">
-        <p className="power-preview">
-          <span>{block.base || "base"}</span>
-          <sup>{block.exponent || "exposant"}</sup>
-        </p>
-        {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-      </div>
-    );
-  }
-
-  return (
-    <div className="math-layout root-layout">
-      <div className="root-preview">
-        <span className="root-symbol">√</span>
-        <span className="root-radicand">{block.radicand || "radicande"}</span>
-      </div>
-      {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-    </div>
-  );
-}
-
-function getInlineStartField(type: StructuredTool) {
-  switch (type) {
-    case "fraction":
-      return "numerator";
-    case "addition":
-    case "subtraction":
-    case "multiplication":
-      return "top";
-    case "division":
-      return "dividend";
-    case "power":
-      return "base";
-    case "root":
-      return "radicand";
-    default:
-      return "";
-  }
-}
-
-function getInlineFieldSequence(type: StructuredTool) {
-  switch (type) {
-    case "fraction":
-      return ["numerator", "denominator"];
-    case "addition":
-    case "subtraction":
-    case "multiplication":
-      return ["carryTop", "top", "carryBottom", "bottom", "carryResult", "result"];
-    case "division":
-      return ["dividend", "divisor", "quotient", "work"];
-    case "power":
-      return ["base", "exponent"];
-    case "root":
-      return ["radicand"];
-    default:
-      return [];
-  }
-}
-
-function getNextInlineField(block: MathBlock, field: string) {
-  const sequence = getInlineFieldSequence(block.type).filter((item) => {
-    if (!isColumnArithmeticBlock(block)) {
-      return true;
-    }
-
-    if (item === "carryTop") {
-      return hasArithmeticCarryCells(block.carryTop) || field === "carryTop";
-    }
-
-    if (item === "carryBottom") {
-      return hasArithmeticCarryCells(block.carryBottom) || field === "carryBottom";
-    }
-
-    if (item === "carryResult") {
-      return hasArithmeticCarryCells(block.carryResult) || field === "carryResult";
-    }
-
-    return true;
-  });
-  const index = sequence.indexOf(field);
-  return index >= 0 && index < sequence.length - 1 ? sequence[index + 1] : null;
-}
-
-function getPreviousInlineField(block: MathBlock, field: string) {
-  const sequence = getInlineFieldSequence(block.type).filter((item) => {
-    if (!isColumnArithmeticBlock(block)) {
-      return true;
-    }
-
-    if (item === "carryTop") {
-      return hasArithmeticCarryCells(block.carryTop) || field === "carryTop";
-    }
-
-    if (item === "carryBottom") {
-      return hasArithmeticCarryCells(block.carryBottom) || field === "carryBottom";
-    }
-
-    if (item === "carryResult") {
-      return hasArithmeticCarryCells(block.carryResult) || field === "carryResult";
-    }
-
-    return true;
-  });
-  const index = sequence.indexOf(field);
-  return index > 0 ? sequence[index - 1] : null;
-}
-
-function isBlockEmpty(block: MathBlock) {
-  if (block.type === "fraction") {
-    return !block.numerator.trim() && !block.denominator.trim();
-  }
-
-  if (block.type === "addition") {
-    return !block.top.trim() && !block.bottom.trim() && !block.result.trim() && !hasArithmeticCarryCells(block.carryTop) && !hasArithmeticCarryCells(block.carryBottom) && !hasArithmeticCarryCells(block.carryResult);
-  }
-
-  if (block.type === "subtraction") {
-    return !block.top.trim() && !block.bottom.trim() && !block.result.trim() && !hasArithmeticCarryCells(block.carryTop) && !hasArithmeticCarryCells(block.carryBottom) && !hasArithmeticCarryCells(block.carryResult);
-  }
-
-  if (block.type === "multiplication") {
-    return !block.top.trim() && !block.bottom.trim() && !block.result.trim() && !hasArithmeticCarryCells(block.carryTop) && !hasArithmeticCarryCells(block.carryBottom) && !hasArithmeticCarryCells(block.carryResult);
-  }
-
-  if (block.type === "division") {
-    return !block.work.trim() && !block.dividend.trim() && !block.divisor.trim() && !block.quotient.trim() && !block.remainder.trim();
-  }
-
-  if (block.type === "power") {
-    return !block.base.trim() && !block.exponent.trim();
-  }
-
-  return !block.radicand.trim();
-}
+import {exportWorkbookPdf, exportWorkbookPng, printWorkbook} from "@/components/math-workbook/export-utils";
+import {DrawCanvasLayer, GeometryCanvasLayer} from "@/components/math-workbook/canvas-layers";
+import {FloatingMathBlockItem, FloatingMathSymbolItem, FloatingTextBoxItem} from "@/components/math-workbook/canvas-items";
+import {renderArithmeticInlineEditor} from "@/components/math-workbook/inline-editor-arithmetic";
+import {renderBasicInlineEditor} from "@/components/math-workbook/inline-editor-basic";
+import {renderDivisionInlineEditor} from "@/components/math-workbook/inline-editor-division";
+import {
+  renderBlockModalFields as renderBlockModalFieldsView,
+  renderGraduatedLinePreview as renderGraduatedLinePreviewView,
+  renderProtractorOverlay as renderProtractorOverlayView
+} from "@/components/math-workbook/renderers";
+import {
+  CanvasQuickInsertMenu,
+  ConfirmResetModal,
+  GeometrySettingsMenu,
+  GraduatedLineModal,
+  GuidedBlockModal,
+  SelectionMenu,
+  SelectionRectOverlay,
+  TextFormatMenu,
+  WorkbookActionBar,
+  WorkbookSidebar
+} from "@/components/math-workbook/presentational";
+import type {
+  StudyMode,
+  SheetStyle,
+  StructuredTool,
+  UtilityMenu,
+  GeometryTool,
+  FractionBlock,
+  DivisionBlock,
+  AdditionBlock,
+  SubtractionBlock,
+  MultiplicationBlock,
+  PowerBlock,
+  RootBlock,
+  FloatingSymbol,
+  FloatingTextBox,
+  FreehandPoint,
+  FreehandStroke,
+  GeometryPointShape,
+  GeometryLinearShape,
+  GeometryCircleShape,
+  GeometryArcShape,
+  GraduatedLineModalShape,
+  MathBlock,
+  GeometryShape,
+  WriterState,
+  ModalState,
+  GraduatedLineDraft,
+  GraduatedLineModalState,
+  GraduatedLineModalSettings,
+  ConfirmResetState,
+  InlineShortcutItem,
+  InlineShortcutGroup,
+  DragState,
+  SelectionRect,
+  PendingSelection,
+  ToolbarDragPayload,
+  PendingInsertTool,
+  InsertCursorPreview,
+  ToolbarDragMeta,
+  EditingBlockState,
+  CanvasQuickMenu,
+  FloatingTextShortcutLayout,
+  DefaultDocumentLabels,
+  WorkbookTranslator,
+  ColorOption,
+  HighlightOption,
+  SheetStyleOption,
+  GeometryToolOption,
+  StructuredToolOption,
+  GeometryPointCoordinate,
+  GeometryDraft,
+  GeometryDraftIndicator,
+  GeometryMeasurement,
+  GeometryProtractorDraft,
+  GeometryAngleMeasurement,
+  GeometryCompassDraft,
+  SnapGuides,
+  AdvancedTool,
+  SymbolResizeHandle,
+  SymbolResizeState,
+  ArithmeticLineField,
+  ArithmeticCarryField,
+  DivisionCellRowOptions
+} from "@/components/math-workbook/shared";
+import {
+  STORAGE_KEY,
+  WRITER_STATE_SCHEMA_VERSION,
+  FLOATING_TEXTBOX_Y_OFFSET,
+  CANVAS_QUICK_MENU_OFFSET_X,
+  MAX_HISTORY_STEPS,
+  DEFAULT_CANVAS_FONT_SIZE_REM,
+  PAPER_LINE_STEP_REM,
+  CANVAS_GRID_LEFT_REM,
+  CANVAS_GRID_TOP_REM,
+  MAX_SNAP_THRESHOLD_PX,
+  CANVAS_LINE_BASELINE_OFFSET_PX,
+  DEFAULT_ACTIVE_COLOR,
+  DEFAULT_HIGHLIGHT_TOOL_COLOR,
+  DEFAULT_SUM_SYMBOL_SIZE,
+  DEFAULT_INTEGRAL_SYMBOL_SIZE,
+  DEFAULT_GEOMETRY_STROKE_WIDTH_MM,
+  GEOMETRY_POINT_RADIUS_MM,
+  GEOMETRY_HIT_RADIUS_PX,
+  GEOMETRY_LINE_EXTENT_PX,
+  HIGHLIGHT_STROKE_OPACITY,
+  HIGHLIGHT_STROKE_WIDTH,
+  MM_TO_PX,
+  DEFAULT_TEXT_HTML,
+  DEFAULT_DOCUMENT_LABELS,
+  COLOR_OPTION_VALUES,
+  HIGHLIGHT_OPTION_VALUES,
+  SHEET_STYLE_OPTION_IDS,
+  GEOMETRY_TOOL_DEFINITIONS,
+  STRUCTURED_TOOL_DEFINITIONS,
+  INLINE_SHORTCUT_DEFINITIONS,
+  mmToPx,
+  cmToPx,
+  pxToMm,
+  getDefaultCanvasFontSize,
+  getDefaultNoteFontSize,
+  getDefaultSheetStyleForLocale,
+  createDefaultHeaderTextBoxes,
+  createDefaultState,
+  createId,
+  renderShortcutGlyph,
+  createWorkbookUi,
+  renderStructuredToolGlyph,
+  renderGeometryToolGlyph,
+  renderGraduatedLineGlyph,
+  getTextBoxWidth,
+  getSheetMetrics,
+  getStrokeBounds,
+  createStrokePath,
+  getPointDistance,
+  getStrokeLength,
+  getDistanceToSegment,
+  simplifyStrokePoints,
+  getPolygonArea,
+  isNearRightAngle,
+  createCirclePoints,
+  normalizeStrokeShape,
+  getGeometryLinearDirection,
+  getGeometryAngleFromCenter,
+  normalizeSignedAngleDelta,
+  getGeometryArcRadiusPx,
+  getGeometryArcPathData,
+  dedupeGeometryRenderPoints,
+  getRenderedLinearGeometryPx,
+  getGeometryShapeBoundsPx,
+  translateGeometryShape,
+  getGeometrySelectionMeasurement,
+  getGraduatedLineSectionCount,
+  getGraduatedLineStartValue,
+  getGraduatedLineEndpointLabel,
+  isGraduatedLineVertical,
+  getGraduatedLineLabelPosition,
+  getGraduatedLineTickLengthPx,
+  getGraduatedLineTickStrokeWidth,
+  getGraduatedLineDraftNormal,
+  getGraduatedLineTickPath,
+  getGraduatedLineRenderTicks,
+  getGraduatedLineAxisLockedPoint,
+  getGeometryAngleDegrees,
+  getGeometrySignedAngleDelta,
+  getGeometryProtractorRadiusPx,
+  getGeometryPolarPoint,
+  getGeometryProtractorPaths,
+  isGeometryConstructionTool,
+  getSnapPointOnRayPx,
+  getSnapPointOnLinePx,
+  cloneWriterState,
+  areWriterStatesEqual,
+  getGridDimensions,
+  getRemPixels,
+  parseStoredState,
+  getDefaultWidth,
+  getDivisionWorkLines,
+  getDivisionQuotientDigits,
+  getCellTextLength,
+  normalizeDivisionDecimalInput,
+  getDivisionMaxWorkLines,
+  getDivisionVisibleWorkLines,
+  setDivisionWorkLine,
+  serializeDivisionWorkLines,
+  getDivisionCellValue,
+  setDivisionCellValue,
+  setDivisionCellValues,
+  getDivisionLeftColumns,
+  getDivisionDivisorColumns,
+  getDivisionQuotientColumns,
+  isColumnArithmeticBlock,
+  isCellStrikeBlock,
+  getArithmeticOperator,
+  getCarryFieldForArithmeticLine,
+  getArithmeticLineForCarryField,
+  normalizeArithmeticCarryCells,
+  migrateArithmeticCarryCells,
+  normalizeStruckCells,
+  getStruckCellKey,
+  hasStruckCell,
+  toggleStruckCell,
+  getStrokeStyleForTool,
+  hasArithmeticCarryCells,
+  getArithmeticCarryCells,
+  getArithmeticCarryCell,
+  getLastFilledArithmeticCarryOffset,
+  setArithmeticCarryCell,
+  getColumnArithmeticColumns,
+  getAlignedCaretCellIndex,
+  getAlignedCellSelectionRange,
+  getAlignedCellCharacter,
+  setAlignedCellCharacter,
+  renderDivisionCellRow,
+  renderArithmeticCarryRow,
+  renderColumnArithmeticPreview,
+  getInlineStartField,
+  getInlineFieldSequence,
+  getNextInlineField,
+  getPreviousInlineField,
+  isBlockEmpty
+} from "@/components/math-workbook/shared";
 
 export function MathWorkbook() {
   const t = useTranslations("Workbook");
@@ -6911,180 +4501,8 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     selectSingleSymbol(symbol.id);
   }
 
-  function renderBlockPreviewButton(blockId: string, field: string, content: ReactNode, className: string, onActivate?: () => void) {
-    return (
-      <button
-        type="button"
-        className={`math-preview-button ${className}`}
-        onMouseDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (onActivate) {
-            onActivate();
-            return;
-          }
-
-          beginBlockEditing(blockId, field);
-        }}
-      >
-        {content}
-      </button>
-    );
-  }
-
-  function renderInteractiveColumnArithmeticPreview(block: AdditionBlock | SubtractionBlock | MultiplicationBlock) {
-    const columns = getColumnArithmeticColumns(block);
-    const operator = getArithmeticOperator(block);
-    const renderCarryPreview = (line: ArithmeticLineField) => {
-      const carryCells = getArithmeticCarryCells(block, line);
-      const carryField = getCarryFieldForArithmeticLine(line);
-      const activeOffset = getLastFilledArithmeticCarryOffset(carryCells);
-
-      if (hasArithmeticCarryCells(carryCells)) {
-        return (
-          <div className="addition-line addition-line-carry">
-            <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-            {renderBlockPreviewButton(
-              block.id,
-              carryField,
-              renderArithmeticCarryRow(carryCells, columns, "addition-row addition-carry-row addition-row-preview", undefined, {
-                field: carryField,
-                struckCells: block.struckCells
-              }),
-              "addition-row-button",
-              () => beginBlockEditing(block.id, activeOffset === null ? carryField : `${carryField}:${activeOffset}`)
-            )}
-          </div>
-        );
-      }
-
-      return null;
-    };
-    const topCarryOverlay = renderCarryPreview("top");
-    const bottomCarryOverlay = renderCarryPreview("bottom");
-    const resultCarryOverlay = renderCarryPreview("result");
-
-    return (
-      <div className="math-layout addition-layout">
-        <div className="addition-preview addition-preview-compact">
-          <div className={`addition-line-stack ${topCarryOverlay ? "addition-line-stack-with-carry" : ""}`}>
-            {topCarryOverlay ? <div className="addition-line-carry-overlay">{topCarryOverlay}</div> : null}
-            <div className="addition-line">
-              <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-              {renderBlockPreviewButton(block.id, "top", renderDivisionCellRow(block.top, columns, "addition-row addition-row-preview", "start", undefined, { field: "top", struckCells: block.struckCells }), "addition-row-button")}
-            </div>
-          </div>
-          <div className={`addition-line-stack ${bottomCarryOverlay ? "addition-line-stack-with-carry" : ""}`}>
-            {bottomCarryOverlay ? <div className="addition-line-carry-overlay">{bottomCarryOverlay}</div> : null}
-            <div className="addition-line">
-              <span className="addition-sign">{operator}</span>
-              {renderBlockPreviewButton(block.id, "bottom", renderDivisionCellRow(block.bottom, columns, "addition-row addition-row-operation addition-row-preview", "start", undefined, { field: "bottom", struckCells: block.struckCells }), "addition-row-button")}
-            </div>
-          </div>
-          <div className={`addition-line-stack ${resultCarryOverlay ? "addition-line-stack-with-carry" : ""}`}>
-            {resultCarryOverlay ? <div className="addition-line-carry-overlay">{resultCarryOverlay}</div> : null}
-            <div className="addition-line">
-              <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-              {renderBlockPreviewButton(block.id, "result", renderDivisionCellRow(block.result, columns, "addition-row addition-row-result addition-row-preview", "start", undefined, { field: "result", struckCells: block.struckCells }), "addition-row-button")}
-            </div>
-          </div>
-        </div>
-        {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-      </div>
-    );
-  }
-
-  function renderInteractiveMathPreview(block: MathBlock) {
-    if (block.type === "fraction") {
-      return (
-        <div className="math-layout fraction-layout">
-          <div className="fraction-preview">
-            {renderBlockPreviewButton(block.id, "numerator", block.numerator || "numérateur", "fraction-line top")}
-            <div className="fraction-bar" />
-            {renderBlockPreviewButton(block.id, "denominator", block.denominator || "dénominateur", "fraction-line")}
-          </div>
-          {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-        </div>
-      );
-    }
-
-    if (isColumnArithmeticBlock(block)) {
-      return renderInteractiveColumnArithmeticPreview(block);
-    }
-
-    if (block.type === "division") {
-      const leftColumns = getDivisionLeftColumns(block);
-      const divisorColumns = getDivisionDivisorColumns(block);
-      const quotientColumns = getDivisionQuotientColumns(block);
-      const workLines = getDivisionVisibleWorkLines(block.work, block.quotient);
-      return (
-        <div className="math-layout division-layout">
-          <div className="division-preview division-preview-compact">
-            <div className="division-left-column division-left-column-compact">
-              <div className="division-work-line division-work-line-head">
-                <span className="division-work-minus division-work-minus-spacer" aria-hidden="true" />
-                {renderBlockPreviewButton(block.id, "dividend", renderDivisionCellRow(block.dividend, leftColumns, "division-dividend division-row-preview", "start", undefined, { field: "dividend", struckCells: block.struckCells }), "division-row-button")}
-              </div>
-              <div className="division-work-grid division-work-grid-compact">
-                {workLines.map((line, index) => (
-                  (() => {
-                    if (index % 2 === 0 && line.trim().length === 0) {
-                      return null;
-                    }
-
-                    const shouldShowResultLine = index % 2 === 0 && (workLines[index + 1] ?? "").trim().length > 0;
-                    return (
-                  <div
-                    key={index}
-                    className={`division-work-line ${index % 2 === 0 ? "division-work-line-operation" : "division-work-line-result"} ${shouldShowResultLine ? "division-work-line-operation-complete" : ""} ${line.trim().length === 0 ? "division-work-line-pending" : ""}`}
-                  >
-                    {index % 2 === 0 ? <span className="division-work-minus">-</span> : <span className="division-work-minus division-work-minus-spacer" aria-hidden="true" />}
-                    {renderBlockPreviewButton(block.id, `work:${index}`, renderDivisionCellRow(line, leftColumns, "division-workpad division-row-preview", "start", undefined, { field: `work:${index}`, struckCells: block.struckCells }), "division-row-button")}
-                  </div>
-                    );
-                  })()
-                ))}
-              </div>
-            </div>
-            <div className="division-right-column">
-              {renderBlockPreviewButton(block.id, "divisor", renderDivisionCellRow(block.divisor, divisorColumns, "division-divisor division-row-preview", "start", undefined, { field: "divisor", struckCells: block.struckCells }), "division-row-button")}
-              {renderBlockPreviewButton(block.id, "quotient", renderDivisionCellRow(block.quotient, quotientColumns, "division-quotient division-row-preview", "start", undefined, { field: "quotient", struckCells: block.struckCells }), "division-row-button")}
-            </div>
-          </div>
-          {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-        </div>
-      );
-    }
-
-    if (block.type === "power") {
-      return (
-        <div className="math-layout power-layout">
-          <p className="power-preview">
-            {renderBlockPreviewButton(block.id, "base", block.base || "base", "power-preview-main")}
-            <sup>{renderBlockPreviewButton(block.id, "exponent", block.exponent || "exposant", "power-preview-exponent")}</sup>
-          </p>
-          {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-        </div>
-      );
-    }
-
-    return (
-      <div className="math-layout root-layout">
-        <div className="root-preview">
-          <span className="root-symbol">√</span>
-          {renderBlockPreviewButton(block.id, "radicand", block.radicand || "radicande", "root-radicand")}
-        </div>
-        {block.caption ? <p className="math-caption">{block.caption}</p> : null}
-      </div>
-    );
-  }
-
   function renderInlineBlockEditor(block: MathBlock) {
     const currentField = editingBlock?.blockId === block.id ? editingBlock.field : null;
-    const isStrikeModeActive = strikeModeBlockId === block.id;
     const bindInlineInput = (field: string) => ({
       ref: (node: HTMLInputElement | HTMLTextAreaElement | null) => {
         blockInputRefs.current[block.id] = {
@@ -7125,6 +4543,12 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
         }, 0);
       }
     });
+    const setInlineInputRef = (blockId: string, field: string, node: HTMLInputElement | null) => {
+      blockInputRefs.current[blockId] = {
+        ...blockInputRefs.current[blockId],
+        [field]: node
+      };
+    };
     const renderInlineOperationMenu = (blockId: string) => (
       <div
         className="operation-edit-menu"
@@ -7162,745 +4586,69 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       </div>
     );
 
-    const renderColumnArithmeticInlineEditor = (arithmeticBlock: AdditionBlock | SubtractionBlock | MultiplicationBlock) => {
-      const columns = getColumnArithmeticColumns(arithmeticBlock);
-      const operator = getArithmeticOperator(arithmeticBlock);
-      const getCurrentLineTargetIndex = (line: ArithmeticLineField) => {
-        const lineValue = arithmeticBlock[line];
-        const caretKey = `${arithmeticBlock.id}:${line}`;
-        const caretPosition = numericFieldCaretPositions[caretKey] ?? Array.from(lineValue).length;
-        return getAlignedCaretCellIndex(lineValue, columns, "start", caretPosition);
-      };
-      const activeLine = currentField === "top" || currentField?.startsWith("carryTop") ? "top" : currentField === "bottom" || currentField?.startsWith("carryBottom") ? "bottom" : currentField === "result" || currentField?.startsWith("carryResult") ? "result" : null;
-      const activateCarryEditing = (field: ArithmeticCarryField, cellIndex: number) => {
-        setEditingBlock({ blockId: arithmeticBlock.id, field: `${field}:${cellIndex}` });
-        focusInlineBlockField(arithmeticBlock.id, `${field}:${cellIndex}`);
-      };
-      const renderArithmeticNumericField = (
-        field: ArithmeticCarryField | ArithmeticLineField,
-        value: string,
-        displayClassName: string
-      ) => {
-        if (field === "result") {
-          const isActive = currentField === field;
-          const activeCellIndex = isActive && activeResultCell?.blockId === arithmeticBlock.id ? activeResultCell.cellIndex : null;
-          const commitResultCell = (cellIndex: number, nextCharacter: string, move: "stay" | "left" | "right" = "right") => {
-            const nextValue = setAlignedCellCharacter(value, columns, "start", cellIndex, nextCharacter);
-            updateInlineBlockField(arithmeticBlock.id, field, nextValue);
-
-            const nextCellIndex =
-              move === "right"
-                ? Math.min(columns - 1, cellIndex + 1)
-                : move === "left"
-                  ? Math.max(0, cellIndex - 1)
-                  : cellIndex;
-
-            activateResultCell(arithmeticBlock.id, nextValue, columns, nextCellIndex);
-          };
-
-          return (
-            <div
-              className={`addition-number-field ${isActive ? "addition-number-field-active" : ""}`}
-              style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}
-            >
-              <div className={`division-cell-row ${displayClassName} addition-number-display ${isStrikeModeActive ? "addition-number-display-strike-mode" : ""}`}>
-                {Array.from({ length: columns }).map((_, cellIndex) => {
-                  const cellValue = getAlignedCellCharacter(value, columns, "start", cellIndex);
-                  const isCellActive = isActive && activeCellIndex === cellIndex;
-                  const isStruck = hasStruckCell(arithmeticBlock.struckCells, field, cellIndex);
-                  const cellClassName = `division-cell ${isCellActive ? "division-cell-target" : ""} ${isStruck ? "division-cell-struck" : ""} division-cell-button`;
-
-                  return (
-                    <div key={cellIndex} className={`addition-result-cell-editor ${isCellActive ? "addition-result-cell-editor-active" : ""}`}>
-                      <button
-                        type="button"
-                        className={cellClassName}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-
-                          if (isStrikeModeActive) {
-                            if (!cellValue.trim()) {
-                              return;
-                            }
-
-                            toggleInlineBlockCellStrike(arithmeticBlock.id, field, cellIndex);
-                            return;
-                          }
-
-                          activateResultCell(arithmeticBlock.id, value, columns, cellIndex);
-                        }}
-                        onTouchStart={(event) => {
-                          event.stopPropagation();
-
-                          if (isStrikeModeActive) {
-                            if (!cellValue.trim()) {
-                              return;
-                            }
-
-                            toggleInlineBlockCellStrike(arithmeticBlock.id, field, cellIndex);
-                            return;
-                          }
-
-                          activateResultCell(arithmeticBlock.id, value, columns, cellIndex);
-                        }}
-                      >
-                        {cellValue}
-                      </button>
-                      {isCellActive && !isStrikeModeActive ? (
-                        <input
-                          ref={(node) => {
-                            blockInputRefs.current[arithmeticBlock.id] = {
-                              ...blockInputRefs.current[arithmeticBlock.id],
-                              [field]: node
-                            };
-                          }}
-                          value={cellValue}
-                          inputMode="decimal"
-                          pattern="[0-9,]*"
-                          maxLength={1}
-                          className="addition-result-cell-input"
-                          autoComplete="off"
-                          autoCorrect="off"
-                          autoCapitalize="off"
-                          spellCheck={false}
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onFocus={() => activateResultCell(arithmeticBlock.id, value, columns, cellIndex)}
-                          onBlur={(event) => {
-                            const nextTarget = event.relatedTarget as Node | null;
-
-                            if (nextTarget && blockNodeRefs.current[arithmeticBlock.id]?.contains(nextTarget)) {
-                              return;
-                            }
-
-                            setTimeout(() => {
-                              if (shouldKeepInlineBlockEditing(arithmeticBlock.id)) {
-                                return;
-                              }
-
-                              if (strikeModeBlockIdRef.current === arithmeticBlock.id) {
-                                return;
-                              }
-
-                              const latestEditingBlock = editingBlockRef.current;
-
-                              if (latestEditingBlock?.blockId === arithmeticBlock.id && latestEditingBlock.field === field) {
-                                finishBlockEditing(arithmeticBlock.id);
-                              }
-                            }, 0);
-                          }}
-                          onChange={(event) => {
-                            const nextCharacter = normalizeDivisionDecimalInput(event.target.value).slice(-1);
-
-                            if (nextCharacter.length === 0) {
-                              return;
-                            }
-
-                            commitResultCell(cellIndex, nextCharacter);
-                          }}
-                          onKeyDown={(event) => {
-                            const isDigit = /^[0-9]$/.test(event.key);
-                            const isComma = event.key === ",";
-
-                            if (isDigit || isComma) {
-                              event.preventDefault();
-                              commitResultCell(cellIndex, event.key);
-                              return;
-                            }
-
-                            if (event.key === "Backspace") {
-                              event.preventDefault();
-
-                              if (cellValue.trim().length > 0) {
-                                commitResultCell(cellIndex, "", "stay");
-                                return;
-                              }
-
-                              if (cellIndex > 0) {
-                                const previousCellIndex = cellIndex - 1;
-                                const previousValue = setAlignedCellCharacter(value, columns, "start", previousCellIndex, "");
-                                updateInlineBlockField(arithmeticBlock.id, field, previousValue);
-                                activateResultCell(arithmeticBlock.id, previousValue, columns, previousCellIndex);
-                              }
-                              return;
-                            }
-
-                            if (event.key === "Delete") {
-                              event.preventDefault();
-                              commitResultCell(cellIndex, "", "stay");
-                              return;
-                            }
-
-                            if (event.key === "ArrowLeft") {
-                              event.preventDefault();
-                              activateResultCell(arithmeticBlock.id, value, columns, Math.max(0, cellIndex - 1));
-                              return;
-                            }
-
-                            if (event.key === "ArrowRight") {
-                              event.preventDefault();
-                              activateResultCell(arithmeticBlock.id, value, columns, Math.min(columns - 1, cellIndex + 1));
-                              return;
-                            }
-
-                            if (event.key === "Tab" || event.key === "Enter") {
-                              handleInlineBlockKeyDown(arithmeticBlock.id, field, event);
-                              return;
-                            }
-
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              finishBlockEditing(arithmeticBlock.id);
-                            }
-                          }}
-                        />
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        }
-
-        const isActive = currentField === field;
-        const caretKey = `${arithmeticBlock.id}:${field}`;
-        const caretPosition = numericFieldCaretPositions[caretKey] ?? Array.from(value).length;
-        const baseInputProps = bindInlineInput(field);
-        const targetCellIndex = getAlignedCaretCellIndex(value, columns, "start", caretPosition);
-
-        return (
-          <div
-            className={`addition-number-field ${isActive ? "addition-number-field-active" : ""}`}
-            style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}
-          >
-            <input
-              {...baseInputProps}
-              value={value}
-              inputMode="decimal"
-              pattern="[0-9,]*"
-              className={`addition-number-input ${isStrikeModeActive ? "addition-number-input-strike-mode" : ""}`}
-              onFocus={(event) => {
-                baseInputProps.onFocus();
-              }}
-              onClick={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(value).length);
-              }}
-              onKeyUp={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
-              }}
-              onSelect={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
-              }}
-              onKeyDown={(event) => {
-                if (handleInlineNumericDeleteKey(arithmeticBlock.id, field, value, event)) {
-                  return;
-                }
-
-                baseInputProps.onKeyDown(event);
-              }}
-              onChange={(event) => {
-                const nextValue = normalizeDivisionDecimalInput(event.target.value);
-                updateInlineBlockField(arithmeticBlock.id, field, nextValue);
-                updateNumericCaretPosition(caretKey, event.target.selectionStart ?? Array.from(nextValue).length);
-              }}
-            />
-            {renderDivisionCellRow(
-              value,
-              columns,
-              `${displayClassName} addition-number-display ${isStrikeModeActive ? "addition-number-display-strike-mode" : ""}`,
-              "start",
-              isActive ? targetCellIndex : undefined,
-              {
-                field,
-                struckCells: arithmeticBlock.struckCells,
-                onCellToggle: (cellIndex, cellValue) => {
-                  if (!isStrikeModeActive) {
-                    activateNumericCellSelection(arithmeticBlock.id, field, value, columns, "start", cellIndex);
-                    return;
-                  }
-
-                  if (!cellValue.trim()) {
-                    return;
-                  }
-
-                  toggleInlineBlockCellStrike(arithmeticBlock.id, field, cellIndex);
-                }
-              }
-            )}
-          </div>
-        );
-      };
-      const renderCarryControl = (line: ArithmeticLineField) => {
-        const carryField = getCarryFieldForArithmeticLine(line);
-        const carryCells = arithmeticBlock[carryField];
-        const activeCarryMatch = currentField?.match(new RegExp(`^${carryField}:(\\d+)$`));
-        const activeOffset = activeCarryMatch ? Number.parseInt(activeCarryMatch[1] ?? "0", 10) : null;
-        const targetCellIndex = line === activeLine ? getCurrentLineTargetIndex(line) : undefined;
-        const targetOffset = typeof targetCellIndex === "number" ? targetCellIndex : 0;
-        const showCarryRow = hasArithmeticCarryCells(carryCells) || activeCarryMatch !== null;
-        const allowCarryCreation = line === "top";
-
-        if (showCarryRow) {
-          return (
-            <div className="addition-line addition-line-carry">
-                <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-                <div className="division-cell-row addition-row addition-carry-row" style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}>
-                  {Array.from({ length: columns }).map((_, index) => {
-                  const isActive = activeOffset === index;
-                  const carryCellValue = getArithmeticCarryCell(carryCells, index);
-                  const isStruck = hasStruckCell(arithmeticBlock.struckCells, carryField, index);
-                  const isTargetCell = typeof targetCellIndex === "number" && targetCellIndex === index;
-                  const cellClassName = `division-cell division-cell-button addition-carry-cell addition-carry-cell-display ${isActive || isTargetCell ? "division-cell-target" : ""} ${isStruck ? "division-cell-struck" : ""}`;
-                  const handleCellPointerDown = (event: ReactMouseEvent<HTMLButtonElement> | ReactTouchEvent<HTMLButtonElement>) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-
-                    if (isStrikeModeActive) {
-                      if (!carryCellValue.trim()) {
-                        return;
-                      }
-
-                      toggleInlineBlockCellStrike(arithmeticBlock.id, carryField, index);
-                      return;
-                    }
-
-                    activateCarryEditing(carryField, index);
-                  };
-
-                  return (
-                    <div key={index} className={`addition-carry-cell-editor ${isActive ? "addition-carry-cell-editor-active" : ""}`}>
-                      <button
-                        type="button"
-                        className={cellClassName}
-                        onMouseDown={handleCellPointerDown}
-                        onTouchStart={handleCellPointerDown}
-                      >
-                        {carryCellValue}
-                      </button>
-                      {isActive && !isStrikeModeActive ? (
-                        <input
-                          ref={(node) => {
-                            blockInputRefs.current[arithmeticBlock.id] = {
-                              ...blockInputRefs.current[arithmeticBlock.id],
-                              [`${carryField}:${index}`]: node
-                            };
-                          }}
-                          value={carryCellValue}
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          maxLength={1}
-                          className="addition-carry-input"
-                          autoComplete="off"
-                          autoCorrect="off"
-                          autoCapitalize="off"
-                          spellCheck={false}
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onFocus={() => activateCarryEditing(carryField, index)}
-                          onBlur={(event) => {
-                            const nextTarget = event.relatedTarget as Node | null;
-
-                            if (nextTarget && blockNodeRefs.current[arithmeticBlock.id]?.contains(nextTarget)) {
-                              return;
-                            }
-
-                            setTimeout(() => {
-                              if (shouldKeepInlineBlockEditing(arithmeticBlock.id)) {
-                                return;
-                              }
-
-                              if (strikeModeBlockIdRef.current === arithmeticBlock.id) {
-                                return;
-                              }
-
-                              const latestEditingBlock = editingBlockRef.current;
-
-                              if (latestEditingBlock?.blockId === arithmeticBlock.id && latestEditingBlock.field === `${carryField}:${index}`) {
-                                finishBlockEditing(arithmeticBlock.id);
-                              }
-                            }, 0);
-                          }}
-                          onChange={(event) => {
-                            const nextValue = event.target.value.replace(/\D+/g, "").slice(-1);
-                            setState((current) => ({
-                              ...current,
-                              blocks: current.blocks.map((block) =>
-                                block.id === arithmeticBlock.id && isColumnArithmeticBlock(block)
-                                  ? ({ ...block, [carryField]: setArithmeticCarryCell(block[carryField], index, nextValue) } as MathBlock)
-                                  : block
-                              )
-                            }));
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Backspace" || event.key === "Delete") {
-                              event.preventDefault();
-
-                              if (carryCellValue.trim().length > 0) {
-                                setState((current) => ({
-                                  ...current,
-                                  blocks: current.blocks.map((block) =>
-                                    block.id === arithmeticBlock.id && isColumnArithmeticBlock(block)
-                                      ? ({ ...block, [carryField]: setArithmeticCarryCell(block[carryField], index, "") } as MathBlock)
-                                      : block
-                                  )
-                                }));
-                                return;
-                              }
-
-                              if (event.key === "Backspace" && index > 0) {
-                                activateCarryEditing(carryField, index - 1);
-                              }
-                              return;
-                            }
-
-                            if (event.key === "ArrowLeft") {
-                              event.preventDefault();
-                              activateCarryEditing(carryField, Math.max(0, index - 1));
-                              return;
-                            }
-
-                            if (event.key === "ArrowRight") {
-                              event.preventDefault();
-                              activateCarryEditing(carryField, Math.min(columns - 1, index + 1));
-                              return;
-                            }
-
-                            if (event.key === "Tab" || event.key === "Enter") {
-                              event.preventDefault();
-                              setEditingBlock({ blockId: arithmeticBlock.id, field: line });
-                            }
-                          }}
-                        />
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        }
-
-        if (isStrikeModeActive || !allowCarryCreation) {
-          return null;
-        }
-
-        return (
-          <div className="addition-line addition-line-carry addition-line-carry-toggle">
-            <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-            <button
-              type="button"
-              className="addition-carry-toggle-button"
-              onMouseDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                activateCarryEditing(carryField, targetOffset);
-              }}
-              onTouchStart={(event) => {
-                event.stopPropagation();
-                activateCarryEditing(carryField, targetOffset);
-              }}
-            >
-              + retenue
-            </button>
-          </div>
-        );
-      };
-      const topCarryControl = renderCarryControl("top");
-      const bottomCarryControl = renderCarryControl("bottom");
-      const resultCarryControl = renderCarryControl("result");
-
-      return wrapInlineOperationEditor(
-        arithmeticBlock.id,
-        <div className="math-layout addition-layout">
-          <div className="addition-preview">
-            <div className={`addition-line-stack ${topCarryControl ? "addition-line-stack-with-carry" : ""}`}>
-              {topCarryControl ? <div className="addition-line-carry-overlay">{topCarryControl}</div> : null}
-              <div className="addition-line">
-                <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-                {renderArithmeticNumericField("top", arithmeticBlock.top, "addition-row")}
-              </div>
-            </div>
-            <div className={`addition-line-stack ${bottomCarryControl ? "addition-line-stack-with-carry" : ""}`}>
-              {bottomCarryControl ? <div className="addition-line-carry-overlay">{bottomCarryControl}</div> : null}
-              <div className="addition-line">
-                <span className="addition-sign">{operator}</span>
-                {renderArithmeticNumericField("bottom", arithmeticBlock.bottom, "addition-row addition-row-operation")}
-              </div>
-            </div>
-            <div className={`addition-line-stack ${resultCarryControl ? "addition-line-stack-with-carry" : ""}`}>
-              {resultCarryControl ? <div className="addition-line-carry-overlay">{resultCarryControl}</div> : null}
-              <div className="addition-line">
-                <span className="addition-sign addition-sign-spacer" aria-hidden="true">{operator}</span>
-                {renderArithmeticNumericField("result", arithmeticBlock.result, "addition-row addition-row-result")}
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    };
-
-    if (block.type === "fraction") {
-      return (
-        <div className="math-layout fraction-layout">
-          <div className="fraction-preview fraction-preview-editing">
-            <input {...bindInlineInput("numerator")} value={block.numerator} placeholder="a" className="math-inline-input fraction-inline-input" />
-            <div className="fraction-bar" />
-            <input {...bindInlineInput("denominator")} value={block.denominator} placeholder="b" className="math-inline-input fraction-inline-input" />
-          </div>
-        </div>
-      );
-    }
-
     if (isColumnArithmeticBlock(block)) {
-      return renderColumnArithmeticInlineEditor(block);
+      return renderArithmeticInlineEditor({
+        t,
+        block,
+        currentField,
+        strikeModeBlockId,
+        numericFieldCaretPositions,
+        activeResultCell,
+        bindInlineInput: bindInlineInput as never,
+        wrapInlineOperationEditor,
+        setInlineInputRef,
+        shouldKeepInlineBlockEditing,
+        finishBlockEditing,
+        updateInlineBlockField,
+        toggleInlineBlockStrikeMode,
+        toggleInlineBlockCellStrike,
+        updateNumericCaretPosition,
+        handleInlineNumericDeleteKey: handleInlineNumericDeleteKey as never,
+        activateNumericCellSelection,
+        activateResultCell,
+        focusInlineBlockField: (blockId, field) => focusInlineBlockField(blockId, field),
+        setEditingField: (blockId, field) => setEditingBlock({ blockId, field }),
+        setArithmeticCarryValue: (blockId, field, index, value) =>
+          setState((current) => ({
+            ...current,
+            blocks: current.blocks.map((entry) =>
+              entry.id === blockId && isColumnArithmeticBlock(entry)
+                ? ({ ...entry, [field]: setArithmeticCarryCell(entry[field], index, value) } as MathBlock)
+                : entry
+            )
+          }))
+      });
     }
 
     if (block.type === "division") {
-      const leftColumns = getDivisionLeftColumns(block);
-      const divisorColumns = getDivisionDivisorColumns(block);
-      const quotientColumns = getDivisionQuotientColumns(block);
-      const divisionWorkLines = getDivisionVisibleWorkLines(block.work, block.quotient);
-      const renderDivisionEditableRow = (
-        field: string,
-        value: string,
-        columns: number,
-        className: string,
-        onUpdate: (nextValue: string) => void
-      ) => {
-        const isActive = currentField === field;
-        const caretKey = `${block.id}:${field}`;
-        const caretPosition = numericFieldCaretPositions[caretKey] ?? Array.from(value).length;
-        const targetCellIndex = getAlignedCaretCellIndex(value, columns, "start", caretPosition);
-        const baseInputProps = bindInlineInput(field);
-
-        return (
-          <div
-            className={`division-number-field ${isActive ? "division-number-field-active" : ""}`}
-            style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}
-          >
-            <input
-              {...baseInputProps}
-              value={value}
-              inputMode="decimal"
-              pattern="[0-9,]*"
-              className={`division-dividend-field ${isStrikeModeActive ? "division-number-field-input-strike-mode" : ""}`}
-              onFocus={() => {
-                baseInputProps.onFocus();
-              }}
-              onClick={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(value).length);
-              }}
-              onKeyUp={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
-              }}
-              onSelect={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
-              }}
-              onChange={(event) => {
-                const nextValue = normalizeDivisionDecimalInput(event.target.value);
-                onUpdate(nextValue);
-                updateNumericCaretPosition(caretKey, event.target.selectionStart ?? Array.from(nextValue).length);
-              }}
-              onKeyDown={(event) => {
-                if (handleInlineNumericDeleteKey(block.id, field, value, event)) {
-                  return;
-                }
-
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  const lineIndex = Number.parseInt(field.slice(5), 10);
-                  const visibleLines = getDivisionVisibleWorkLines(block.work, block.quotient);
-                  const maxLines = getDivisionMaxWorkLines(block.quotient);
-
-                  if (lineIndex < visibleLines.length - 1 || ((visibleLines[lineIndex] ?? "").trim().length > 0 && lineIndex < maxLines - 1)) {
-                    setEditingBlock({ blockId: block.id, field: `work:${lineIndex + 1}` });
-                    return;
-                  }
-
-                  finishBlockEditing(block.id);
-                  return;
-                }
-
-                if (event.key === "Tab") {
-                  event.preventDefault();
-                  const lineIndex = Number.parseInt(field.slice(5), 10);
-                  const nextField = event.shiftKey ? (lineIndex > 0 ? `work:${lineIndex - 1}` : "quotient") : `work:${lineIndex + 1}`;
-
-                  setEditingBlock({ blockId: block.id, field: nextField });
-                }
-              }}
-            />
-            {renderDivisionCellRow(
-              value,
-              columns,
-              `${className} division-number-field-display ${isStrikeModeActive ? "division-number-field-display-strike-mode" : ""}`,
-              "start",
-              isActive ? targetCellIndex : undefined,
-              {
-                field,
-                struckCells: block.struckCells,
-                onCellToggle: (cellIndex, cellValue) => {
-                  if (!isStrikeModeActive) {
-                    activateNumericCellSelection(block.id, field, value, columns, "start", cellIndex);
-                    return;
-                  }
-
-                  if (!cellValue.trim()) {
-                    return;
-                  }
-
-                  toggleInlineBlockCellStrike(block.id, field, cellIndex);
-                }
-              }
-            )}
-          </div>
-        );
-      };
-      const renderDivisionNumericField = (
-        field: "dividend" | "divisor" | "quotient",
-        value: string,
-        columns: number,
-        wrapperClassName: string,
-        inputClassName: string,
-        displayClassName: string
-      ) => {
-        const isActive = currentField === field;
-        const caretKey = `${block.id}:${field}`;
-        const caretPosition = numericFieldCaretPositions[caretKey] ?? Array.from(value).length;
-        const align = "start";
-        const targetCellIndex = getAlignedCaretCellIndex(value, columns, align, caretPosition);
-        const baseInputProps = bindInlineInput(field);
-
-        return (
-          <div
-            className={`division-number-field ${wrapperClassName} ${isActive ? "division-number-field-active" : ""}`}
-            style={{ ["--division-columns" as string]: columns } as ReactCSSProperties}
-          >
-            <input
-              {...baseInputProps}
-              value={value}
-              inputMode="decimal"
-              pattern="[0-9,]*"
-              className={`${inputClassName} ${isStrikeModeActive ? "division-number-field-input-strike-mode" : ""}`}
-              onFocus={(event) => {
-                baseInputProps.onFocus();
-              }}
-              onClick={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(value).length);
-              }}
-              onKeyUp={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
-              }}
-              onSelect={(event) => {
-                updateNumericCaretPosition(caretKey, event.currentTarget.selectionStart ?? Array.from(event.currentTarget.value).length);
-              }}
-              onChange={(event) => {
-                const nextValue = normalizeDivisionDecimalInput(event.target.value);
-                updateInlineBlockField(block.id, field, nextValue);
-                updateNumericCaretPosition(caretKey, event.target.selectionStart ?? Array.from(nextValue).length);
-              }}
-              onKeyDown={(event) => {
-                if (handleInlineNumericDeleteKey(block.id, field, value, event)) {
-                  return;
-                }
-
-                baseInputProps.onKeyDown(event);
-              }}
-            />
-            {renderDivisionCellRow(
-              value,
-              columns,
-              `${displayClassName} division-number-field-display ${isStrikeModeActive ? "division-number-field-display-strike-mode" : ""}`,
-              align,
-              isActive ? targetCellIndex : undefined,
-              {
-                field,
-                struckCells: block.struckCells,
-                onCellToggle: (cellIndex, cellValue) => {
-                  if (!isStrikeModeActive) {
-                    activateNumericCellSelection(block.id, field, value, columns, align, cellIndex);
-                    return;
-                  }
-
-                  if (!cellValue.trim()) {
-                    return;
-                  }
-
-                  toggleInlineBlockCellStrike(block.id, field, cellIndex);
-                }
-              }
-            )}
-          </div>
-        );
-      };
-
-      return wrapInlineOperationEditor(
-        block.id,
-        <div className="math-layout division-layout">
-          <div className="division-preview">
-            <div className="division-left-column">
-              <div className="division-work-line division-work-line-head">
-                <span className="division-work-minus division-work-minus-spacer" aria-hidden="true" />
-                {renderDivisionNumericField("dividend", block.dividend, leftColumns, "division-dividend-field-shell", "division-dividend-field", "division-dividend")}
-              </div>
-              <div className="division-work-grid">
-                {divisionWorkLines.map((line, index) => (
-                  (() => {
-                    const shouldShowResultLine = index % 2 === 0 && (divisionWorkLines[index + 1] ?? "").trim().length > 0;
-                    return (
-                  <div
-                    key={index}
-                    className={`division-work-line ${index % 2 === 0 ? "division-work-line-operation" : "division-work-line-result"} ${shouldShowResultLine ? "division-work-line-operation-complete" : ""} ${line.trim().length === 0 ? "division-work-line-pending" : ""}`}
-                  >
-                    {index % 2 === 0 ? <span className="division-work-minus">-</span> : <span className="division-work-minus division-work-minus-spacer" aria-hidden="true" />}
-                    {renderDivisionEditableRow(`work:${index}`, line, leftColumns, "division-workpad", (nextValue) =>
-                      setState((current) => ({
-                        ...current,
-                        blocks: current.blocks.map((entry) =>
-                          entry.id === block.id && entry.type === "division"
-                            ? ({ ...entry, work: setDivisionWorkLine(entry.work, index, nextValue) } as MathBlock)
-                            : entry
-                        )
-                      }))
-                    )}
-                  </div>
-                    );
-                  })()
-                  ))}
-              </div>
-            </div>
-            <div className="division-right-column">
-              {renderDivisionNumericField("divisor", block.divisor, divisorColumns, "division-divisor-field-shell", "division-divisor-field", "division-divisor")}
-              {renderDivisionNumericField("quotient", block.quotient, quotientColumns, "division-quotient-field-shell", "division-quotient-field", "division-quotient")}
-            </div>
-          </div>
-        </div>
-      );
+      return renderDivisionInlineEditor({
+        block,
+        currentField,
+        isStrikeModeActive: strikeModeBlockId === block.id,
+        numericFieldCaretPositions,
+        bindInlineInput: bindInlineInput as never,
+        wrapInlineOperationEditor,
+        updateNumericCaretPosition,
+        updateInlineBlockField,
+        handleInlineNumericDeleteKey: handleInlineNumericDeleteKey as never,
+        activateNumericCellSelection,
+        toggleInlineBlockCellStrike,
+        setEditingField: (blockId, field) => setEditingBlock({ blockId, field }),
+        finishBlockEditing,
+        setDivisionWorkValue: (blockId, lineIndex, nextValue) =>
+          setState((current) => ({
+            ...current,
+            blocks: current.blocks.map((entry) =>
+              entry.id === blockId && entry.type === "division"
+                ? ({ ...entry, work: setDivisionWorkLine(entry.work, lineIndex, nextValue) } as MathBlock)
+                : entry
+            )
+          }))
+      });
     }
 
-    if (block.type === "power") {
-      return (
-        <div className="math-layout power-layout">
-          <p className="power-preview power-preview-editing">
-            <input {...bindInlineInput("base")} value={block.base} placeholder="a" className="math-inline-input power-inline-base" />
-            <sup>
-              <input {...bindInlineInput("exponent")} value={block.exponent} placeholder="n" className="math-inline-input power-inline-exponent" />
-            </sup>
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="math-layout root-layout">
-        <div className="root-preview root-preview-editing">
-          <span className="root-symbol">√</span>
-          <input {...bindInlineInput("radicand")} value={block.radicand} placeholder="a" className="math-inline-input root-inline-radicand" />
-        </div>
-      </div>
-    );
+    return renderBasicInlineEditor(block as FractionBlock | PowerBlock | RootBlock, bindInlineInput as never);
   }
-
   function resetDocument() {
     setConfirmResetState({ open: true });
   }
@@ -7942,457 +4690,65 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     setOpenMenu(null);
   }
 
-  function createExportSheetOverlay(sheetStyle: SheetStyle, width: number, height: number) {
-    const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    overlay.setAttribute("class", "export-sheet-overlay");
-    overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    overlay.setAttribute("width", `${width}`);
-    overlay.setAttribute("height", `${height}`);
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.setAttribute("preserveAspectRatio", "none");
-
-    const addLine = (x1: number, y1: number, x2: number, y2: number, color: string) => {
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("class", "export-sheet-line");
-      line.setAttribute("x1", `${x1}`);
-      line.setAttribute("y1", `${y1}`);
-      line.setAttribute("x2", `${x2}`);
-      line.setAttribute("y2", `${y2}`);
-      line.setAttribute("stroke", color);
-      line.setAttribute("stroke-width", "1");
-      line.setAttribute("vector-effect", "non-scaling-stroke");
-      line.setAttribute("shape-rendering", "crispEdges");
-      overlay.append(line);
-    };
-
-    if (sheetStyle === "blank") {
-      return overlay;
-    }
-
-    if (sheetStyle === "lined") {
-      const lineStep = mmToPx(SEYES_MAJOR_MM);
-
-      for (let y = lineStep; y < height; y += lineStep) {
-        const snappedY = Math.round(y) + 0.5;
-        addLine(0, snappedY, width, snappedY, "rgba(174, 204, 231, 0.74)");
-      }
-
-      return overlay;
-    }
-
-    if (sheetStyle === "seyes") {
-      const major = mmToPx(SEYES_MAJOR_MM);
-      const minor = mmToPx(SEYES_MINOR_MM);
-      const marginX = cmToPx(SEYES_MARGIN_CM);
-
-      addLine(Math.round(marginX) - 0.5, 0, Math.round(marginX) - 0.5, height, "rgba(235, 146, 82, 0.45)");
-
-      for (let y = minor; y < height; y += minor) {
-        const isMajor = Math.abs((y / major) - Math.round(y / major)) < 0.02;
-        const snappedY = Math.round(y) + 0.5;
-        addLine(0, snappedY, width, snappedY, isMajor ? "rgba(162, 198, 228, 0.82)" : "rgba(190, 218, 239, 0.5)");
-      }
-
-      for (let x = marginX; x < width; x += major) {
-        const snappedX = Math.round(x) + 0.5;
-        addLine(snappedX, 0, snappedX, height, "rgba(162, 198, 228, 0.78)");
-      }
-
-      return overlay;
-    }
-
-    const major = sheetStyle === "large-grid" ? mmToPx(8) : mmToPx(SMALL_GRID_MM);
-    const color = sheetStyle === "large-grid" ? "rgba(187, 209, 235, 0.72)" : "rgba(187, 209, 235, 0.62)";
-
-    for (let y = major; y < height; y += major) {
-      const snappedY = Math.round(y) + 0.5;
-      addLine(0, snappedY, width, snappedY, color);
-    }
-
-    for (let x = major; x < width; x += major) {
-      const snappedX = Math.round(x) + 0.5;
-      addLine(snappedX, 0, snappedX, height, color);
-    }
-
-    return overlay;
-  }
-
-  function createExportCanvasNode() {
-    if (!canvasRef.current) {
-      return null;
-    }
-
-    const exportWidth = Math.max(1, Math.round(canvasRef.current.offsetWidth));
-    const exportHeight = Math.max(1, Math.round(canvasRef.current.offsetHeight));
-    const wrapper = document.createElement("div");
-    wrapper.className = "export-clone";
-
-    const clone = canvasRef.current.cloneNode(true) as HTMLElement;
-    clone.classList.remove("document-canvas-drop-active", "document-canvas-interacting", "document-canvas-draw-mode");
-    clone.classList.add("export-sheet");
-    clone.style.width = `${exportWidth}px`;
-    clone.style.height = `${exportHeight}px`;
-    clone.style.aspectRatio = "auto";
-    clone.style.margin = "0";
-    clone.style.borderRadius = "0";
-    clone.style.boxShadow = "none";
-    clone.style.background = "#fffdf9";
-    clone.style.backgroundImage = "none";
-    clone.style.setProperty("--canvas-type-size", `${getDefaultCanvasFontSize(state.sheetStyle)}rem`);
-    clone.querySelectorAll(".canvas-snap-guide, .canvas-quick-menu, .canvas-quick-anchor").forEach((node) => node.remove());
-
-    const overlay = createExportSheetOverlay(state.sheetStyle, exportWidth, exportHeight);
-    clone.insertBefore(overlay, clone.firstChild);
-
-    wrapper.append(clone);
-    document.body.append(wrapper);
-
-    return {
-      node: clone,
-      cleanup: () => wrapper.remove()
-    };
-  }
-
   async function exportPdf() {
-    const exportNode = createExportCanvasNode();
-
-    if (!exportNode) {
+    if (!canvasRef.current) {
       return;
     }
 
     setIsExporting("pdf");
 
     try {
-      const imageUrl = await toPng(exportNode.node, {
-        backgroundColor: "#fffdf8",
-        cacheBust: true,
-        skipFonts: true,
-        pixelRatio: 2
-      });
-
-      const image = new Image();
-      image.src = imageUrl;
-
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("Image export error"));
-      });
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      pdf.addImage(imageUrl, "PNG", 0, 0, pageWidth, pageHeight);
-      pdf.save(`${safeFileName(state.title) || "maths-facile"}.pdf`);
+      await exportWorkbookPdf(canvasRef.current, state.sheetStyle, state.title);
     } finally {
-      exportNode.cleanup();
       setIsExporting(null);
     }
   }
 
   async function exportPng() {
-    const exportNode = createExportCanvasNode();
-
-    if (!exportNode) {
+    if (!canvasRef.current) {
       return;
     }
-
-    const previewWindow = window.open("", "_blank");
 
     setIsExporting("png");
 
     try {
-      const imageUrl = await toPng(exportNode.node, {
-        backgroundColor: "#fffdf8",
-        cacheBust: true,
-        skipFonts: true,
-        pixelRatio: 2
-      });
-
-      if (!previewWindow) {
-        return;
-      }
-
-      const safeTitle = state.title || "maths-facile";
-      previewWindow.document.title = `${safeTitle}.png`;
-      previewWindow.document.body.style.margin = "0";
-      previewWindow.document.body.style.background = "#1f2430";
-      previewWindow.document.body.style.display = "grid";
-      previewWindow.document.body.style.placeItems = "center";
-      previewWindow.document.body.innerHTML = `<img src="${imageUrl}" alt="${safeTitle}" style="max-width:100vw;max-height:100vh;display:block;background:white;" />`;
-      previewWindow.document.close();
+      await exportWorkbookPng(canvasRef.current, state.sheetStyle, state.title);
     } finally {
-      exportNode.cleanup();
       setIsExporting(null);
     }
   }
 
   async function printSheet() {
-    const exportNode = createExportCanvasNode();
-
-    if (!exportNode) {
+    if (!canvasRef.current) {
       return;
     }
-
-    const printWindow = window.open("", "_blank");
 
     setIsExporting("print");
 
     try {
-      const imageUrl = await toPng(exportNode.node, {
-        backgroundColor: "#fffdf8",
-        cacheBust: true,
-        skipFonts: true,
-        pixelRatio: 2
-      });
-
-      if (!printWindow) {
-        return;
-      }
-
-      const safeTitle = state.title || "maths-facile";
-      printWindow.document.title = `${safeTitle} - impression`;
-      printWindow.document.open();
-      printWindow.document.write(`<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <title>${safeTitle} - impression</title>
-    <style>
-      @page { size: A4 portrait; margin: 0; }
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: white;
-      }
-      body {
-        display: grid;
-        place-items: start center;
-      }
-      img {
-        display: block;
-        width: 210mm;
-        height: 297mm;
-        object-fit: contain;
-      }
-    </style>
-  </head>
-  <body>
-    <img src="${imageUrl}" alt="${safeTitle}" />
-    <script>
-      const firePrint = () => {
-        window.focus();
-        window.print();
-      };
-      window.addEventListener('load', () => window.setTimeout(firePrint, 80), { once: true });
-      window.addEventListener('afterprint', () => window.close(), { once: true });
-    </script>
-  </body>
-</html>`);
-      printWindow.document.close();
+      await printWorkbook(canvasRef.current, state.sheetStyle, state.title);
     } finally {
-      exportNode.cleanup();
       setIsExporting(null);
     }
   }
 
   function renderGraduatedLinePreview(start: GeometryPointCoordinate, end: GeometryPointCoordinate, startValueInput: string, sectionsInput: string) {
-    const sections = getGraduatedLineSectionCount(sectionsInput);
-    const previewShape = {
-      ...createGraduatedLineShape(start, end, sections),
-      startValue: getGraduatedLineStartValue(startValueInput)
-    };
-    const rendered = getRenderedLinearGeometryPx(previewShape, 480, 120);
-    const ticks = getGraduatedLineRenderTicks(previewShape, 480, 120);
-
-    if (!rendered) {
-      return null;
-    }
-
-    const startLabelPosition = getGraduatedLineLabelPosition(rendered.x1, rendered.y1, rendered.x2, rendered.y2, 0);
-    const endLabelPosition = getGraduatedLineLabelPosition(rendered.x1, rendered.y1, rendered.x2, rendered.y2, 1);
-
-    const points = [
-      { x: rendered.x1, y: rendered.y1 },
-      { x: rendered.x2, y: rendered.y2 },
-      { x: startLabelPosition.x, y: startLabelPosition.y },
-      { x: endLabelPosition.x, y: endLabelPosition.y },
-      ...ticks.flatMap((tick) => [
-        { x: tick.x1, y: tick.y1 },
-        { x: tick.x2, y: tick.y2 }
-      ])
-    ];
-    const minX = Math.min(...points.map((point) => point.x));
-    const maxX = Math.max(...points.map((point) => point.x));
-    const minY = Math.min(...points.map((point) => point.y));
-    const maxY = Math.max(...points.map((point) => point.y));
-    const contentWidth = Math.max(1, maxX - minX);
-    const contentHeight = Math.max(1, maxY - minY);
-    const scale = Math.min((480 - 32) / contentWidth, (120 - 24) / contentHeight, 1);
-    const translateX = (480 - contentWidth * scale) / 2 - minX * scale;
-    const translateY = (120 - contentHeight * scale) / 2 - minY * scale;
-
-    return (
-      <svg className="graduated-line-modal-preview-svg" viewBox="0 0 480 120" aria-hidden="true" focusable="false">
-        <g transform={`translate(${translateX} ${translateY}) scale(${scale})`}>
-          <line
-            className="canvas-geometry-line canvas-geometry-graduated-line"
-            x1={rendered.x1}
-            y1={rendered.y1}
-            x2={rendered.x2}
-            y2={rendered.y2}
-            stroke={previewShape.color}
-            strokeWidth={Math.max(1.4, mmToPx(previewShape.strokeWidthMm))}
-            strokeLinecap="round"
-          />
-          {ticks.map((tick, index) => (
-            <line
-              key={`graduated-line-preview-${index}`}
-              className="canvas-geometry-graduated-line-tick"
-              x1={tick.x1}
-              y1={tick.y1}
-              x2={tick.x2}
-              y2={tick.y2}
-              stroke={previewShape.color}
-              strokeWidth={tick.strokeWidth}
-              strokeLinecap="round"
-            />
-          ))}
-          <text
-            className="canvas-geometry-measure canvas-geometry-graduated-line-label"
-            x={startLabelPosition.x}
-            y={startLabelPosition.y}
-            textAnchor={startLabelPosition.textAnchor}
-            dominantBaseline={startLabelPosition.dominantBaseline}
-          >
-            {getGraduatedLineEndpointLabel(previewShape, 0)}
-          </text>
-          <text
-            className="canvas-geometry-measure canvas-geometry-graduated-line-label"
-            x={endLabelPosition.x}
-            y={endLabelPosition.y}
-            textAnchor={endLabelPosition.textAnchor}
-            dominantBaseline={endLabelPosition.dominantBaseline}
-          >
-            {getGraduatedLineEndpointLabel(previewShape, 1)}
-          </text>
-        </g>
-      </svg>
-    );
+    return renderGraduatedLinePreviewView({
+      createGraduatedLineShape,
+      start,
+      end,
+      startValueInput,
+      sectionsInput
+    });
   }
 
   function renderModalFields(block: MathBlock) {
-    if (block.type === "fraction") {
-      return (
-        <div className="math-editor-grid">
-          <label>
-            <span>{t("modalFields.numerator")}</span>
-            <input value={block.numerator} onChange={(event) => updateModalField("numerator", event.target.value)} placeholder="3x + 2" />
-          </label>
-          <label>
-            <span>{t("modalFields.denominator")}</span>
-            <input value={block.denominator} onChange={(event) => updateModalField("denominator", event.target.value)} placeholder="5" />
-          </label>
-          <label>
-            <span>{t("modalFields.note")}</span>
-            <input value={block.caption} onChange={(event) => updateModalField("caption", event.target.value)} placeholder={t("modalFields.fractionNotePlaceholder")} />
-          </label>
-        </div>
-      );
-    }
-
-    if (block.type === "division") {
-      return (
-        <div className="math-editor-grid">
-          <label>
-            <span>{t("modalFields.divisor")}</span>
-            <input value={block.divisor} onChange={(event) => updateModalField("divisor", event.target.value)} placeholder="7" />
-          </label>
-          <label>
-            <span>{t("modalFields.quotient")}</span>
-            <input value={block.quotient} onChange={(event) => updateModalField("quotient", event.target.value)} placeholder="35" />
-          </label>
-          <label className="wide-field">
-            <span>{t("modalFields.dividendAndWork")}</span>
-            <textarea value={block.work} onChange={(event) => updateModalField("work", event.target.value)} placeholder={"245\n21\n35\n0"} rows={4} />
-          </label>
-          <label className="wide-field">
-            <span>{t("modalFields.note")}</span>
-            <input value={block.caption} onChange={(event) => updateModalField("caption", event.target.value)} placeholder={t("modalFields.divisionNotePlaceholder")} />
-          </label>
-        </div>
-      );
-    }
-
-    if (block.type === "addition" || block.type === "subtraction" || block.type === "multiplication") {
-      return (
-        <div className="math-editor-grid">
-          <label>
-            <span>{t("modalFields.firstTerm")}</span>
-            <input value={block.top} onChange={(event) => updateModalField("top", event.target.value)} placeholder="245" />
-          </label>
-          <label>
-            <span>{t("modalFields.secondTerm")}</span>
-            <input value={block.bottom} onChange={(event) => updateModalField("bottom", event.target.value)} placeholder="37" />
-          </label>
-          <label>
-            <span>{t("modalFields.result")}</span>
-            <input value={block.result} onChange={(event) => updateModalField("result", event.target.value)} placeholder="282" />
-          </label>
-          <label>
-            <span>{t("modalFields.carryTop")}</span>
-            <input value={block.carryTop.join("")} onChange={(event) => updateModalField("carryTop", normalizeArithmeticCarryCells(event.target.value))} placeholder="1" />
-          </label>
-          <label>
-            <span>{t("modalFields.carryMiddle")}</span>
-            <input value={block.carryBottom.join("")} onChange={(event) => updateModalField("carryBottom", normalizeArithmeticCarryCells(event.target.value))} placeholder="2" />
-          </label>
-          <label>
-            <span>{t("modalFields.carryBottom")}</span>
-            <input value={block.carryResult.join("")} onChange={(event) => updateModalField("carryResult", normalizeArithmeticCarryCells(event.target.value))} placeholder="3" />
-          </label>
-          <label className="wide-field">
-            <span>{t("modalFields.note")}</span>
-            <input
-              value={block.caption}
-              onChange={(event) => updateModalField("caption", event.target.value)}
-              placeholder={block.type === "addition" ? t("modalFields.additionNotePlaceholder") : block.type === "subtraction" ? t("modalFields.subtractionNotePlaceholder") : t("modalFields.multiplicationNotePlaceholder")}
-            />
-          </label>
-        </div>
-      );
-    }
-
-    if (block.type === "power") {
-      return (
-        <div className="math-editor-grid">
-          <label>
-            <span>{t("modalFields.base")}</span>
-            <input value={block.base} onChange={(event) => updateModalField("base", event.target.value)} placeholder="2" />
-          </label>
-          <label>
-            <span>{t("modalFields.exponent")}</span>
-            <input value={block.exponent} onChange={(event) => updateModalField("exponent", event.target.value)} placeholder="3" />
-          </label>
-          <label>
-            <span>{t("modalFields.note")}</span>
-            <input value={block.caption} onChange={(event) => updateModalField("caption", event.target.value)} placeholder={t("modalFields.powerNotePlaceholder")} />
-          </label>
-        </div>
-      );
-    }
-
-    return (
-      <div className="math-editor-grid">
-        <label>
-          <span>{t("modalFields.radicand")}</span>
-          <input value={block.radicand} onChange={(event) => updateModalField("radicand", event.target.value)} placeholder="49" />
-        </label>
-        <label className="wide-field">
-          <span>{t("modalFields.note")}</span>
-          <input value={block.caption} onChange={(event) => updateModalField("caption", event.target.value)} placeholder={t("modalFields.rootNotePlaceholder")} />
-        </label>
-      </div>
-    );
+    return renderBlockModalFieldsView({
+      t,
+      block,
+      updateModalField,
+      normalizeArithmeticCarryCells
+    });
   }
 
   function toggleMenu(menu: Exclude<UtilityMenu, null>) {
@@ -8506,412 +4862,77 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     end: GeometryPointCoordinate,
     tone: "draft" | "final" = "final"
   ) {
-    const { radius, baselineAngle, protractorPath, measuredArcPath } = getGeometryProtractorPaths(vertex, baseline, end);
-    const delta = getGeometrySignedAngleDelta(vertex, baseline, end);
-    const stepDirection = delta >= 0 ? 1 : -1;
-    const degreeValue = Math.round(getGeometryAngleDegrees(vertex, baseline, end));
-    const centerX = mmToPx(vertex.xMm);
-    const centerY = mmToPx(vertex.yMm);
-    const baselineX = mmToPx(baseline.xMm);
-    const baselineY = mmToPx(baseline.yMm);
-    const endX = mmToPx(end.xMm);
-    const endY = mmToPx(end.yMm);
-
-    return (
-      <g className={`canvas-geometry-protractor canvas-geometry-protractor-${tone}`}>
-        <path className="canvas-geometry-protractor-shell" d={protractorPath} />
-        {Array.from({ length: 19 }, (_, index) => {
-          const angle = baselineAngle + ((Math.PI / 18) * index * stepDirection);
-          const outer = getGeometryPolarPoint(vertex, radius - 2, angle);
-          const inner = getGeometryPolarPoint(vertex, index % 3 === 0 ? radius - 14 : radius - 8, angle);
-
-          return (
-            <line
-              key={`tick-${tone}-${index}`}
-              className="canvas-geometry-protractor-tick"
-              x1={inner.x}
-              y1={inner.y}
-              x2={outer.x}
-              y2={outer.y}
-            />
-          );
-        })}
-        <line className="canvas-geometry-protractor-ray" x1={centerX} y1={centerY} x2={baselineX} y2={baselineY} />
-        <line className="canvas-geometry-protractor-ray" x1={centerX} y1={centerY} x2={endX} y2={endY} />
-        <path className="canvas-geometry-protractor-arc" d={measuredArcPath} />
-        <text className="canvas-geometry-measure" x={centerX} y={centerY - radius - 18} textAnchor="middle">
-          {`${degreeValue}°`}
-        </text>
-      </g>
-    );
+    return renderProtractorOverlayView(vertex, baseline, end, tone);
   }
 
   return (
     <main className="editor-shell">
-      {isToolsPanelOpen ? <button type="button" className="tools-drawer-backdrop" aria-label={t("toolbar.closeTools")} onClick={() => setIsToolsPanelOpen(false)} /> : null}
-
-      <header className={`top-toolbar ${isToolsPanelOpen ? "top-toolbar-open" : ""}`}>
-        <div className="top-toolbar-inner">
-          <div className="toolbar-row toolbar-row-secondary sidebar-block sidebar-block-compact">
-            <p className="sidebar-block-label">{t("toolbar.geometry")}</p>
-            <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label={t("toolbar.geometryGroup")}>
-              {workbookUi.geometryTools.map((tool) => (
-                <button
-                  key={tool.id}
-                  type="button"
-                  className={`toolbar-shortcut toolbar-shortcut-symbol sheet-tool-button ${activeGeometryTool === tool.id ? "toolbar-shortcut-active sheet-tool-button-active" : ""}`}
-                  aria-label={tool.label}
-                  aria-pressed={activeGeometryTool === tool.id}
-                  title={tool.hint}
-                  onClick={() => toggleGeometryTool(tool.id)}
-                >
-                  {renderGeometryToolGlyph(tool)}
-                </button>
-              ))}
-            </div>
-            {activeGeometryTool ? <p className="sidebar-helper geometry-panel-helper">{geometryPanelHelper}</p> : null}
-          </div>
-
-          <div className="toolbar-row toolbar-row-secondary sidebar-block sidebar-block-compact">
-            <p className="sidebar-block-label">{t("toolbar.structuredOperations")}</p>
-            <div className="toolbar-shortcut-group" aria-label={t("toolbar.insertionTools")}>
-              {operationStructuredTools.map((tool) => (
-                <button
-                  key={tool.id}
-                  type="button"
-                  className={`toolbar-shortcut toolbar-shortcut-symbol ${pendingInsertTool?.kind === "structured" && pendingInsertTool.toolId === tool.id ? "toolbar-shortcut-active" : ""}`}
-                  aria-label={tool.label}
-                  aria-pressed={pendingInsertTool?.kind === "structured" && pendingInsertTool.toolId === tool.id}
-                  draggable
-                  title={tool.hint}
-                  onDragStart={(event) => handleToolDragStart({ kind: "structured", toolId: tool.id }, event)}
-                  onDragEnd={handleToolDragEnd}
-                  onClick={() => {
-                    if (shouldIgnoreToolbarClick()) {
-                      return;
-                    }
-
-                    togglePendingInsertTool({ kind: "structured", toolId: tool.id });
-                  }}
-                >
-                  {renderStructuredToolGlyph(tool.id)}
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "graduated-line" ? "toolbar-shortcut-active" : ""}`}
-                aria-label={t("toolbar.graduatedLine")}
-                aria-pressed={advancedTool === "graduated-line"}
-                title={t("toolbar.graduatedLine")}
-                onClick={() => toggleAdvancedToolMode("graduated-line")}
-              >
-                {renderGraduatedLineGlyph()}
-              </button>
-            </div>
-          </div>
-
-          <div className="toolbar-row toolbar-row-secondary sidebar-block sidebar-block-compact">
-            <p className="sidebar-block-label">{t("toolbar.commonSymbols")}</p>
-            <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label={t("toolbar.commonSymbolShortcuts")}>
-              {rootStructuredTool ? (
-                <button
-                  type="button"
-                  className={`toolbar-shortcut toolbar-shortcut-symbol ${pendingInsertTool?.kind === "structured" && pendingInsertTool.toolId === rootStructuredTool.id ? "toolbar-shortcut-active" : ""}`}
-                  aria-label={rootStructuredTool.label}
-                  aria-pressed={pendingInsertTool?.kind === "structured" && pendingInsertTool.toolId === rootStructuredTool.id}
-                  draggable
-                  title={rootStructuredTool.hint}
-                  onDragStart={(event) => handleToolDragStart({ kind: "structured", toolId: rootStructuredTool.id }, event)}
-                  onDragEnd={handleToolDragEnd}
-                  onClick={() => {
-                    if (shouldIgnoreToolbarClick()) {
-                      return;
-                    }
-
-                    togglePendingInsertTool({ kind: "structured", toolId: rootStructuredTool.id });
-                  }}
-                >
-                  {renderStructuredToolGlyph(rootStructuredTool.id)}
-                </button>
-              ) : null}
-              {commonInlineShortcuts.map((shortcut) => (
-                <button
-                  key={shortcut.id}
-                  type="button"
-                  className={`toolbar-shortcut toolbar-shortcut-symbol ${pendingInsertTool?.kind === "shortcut" && pendingInsertTool.shortcutId === shortcut.id ? "toolbar-shortcut-active" : ""}`}
-                  draggable
-                  title={shortcut.hint}
-                  aria-pressed={pendingInsertTool?.kind === "shortcut" && pendingInsertTool.shortcutId === shortcut.id}
-                  onDragStart={(event) => handleToolDragStart({ kind: "shortcut", shortcutId: shortcut.id }, event)}
-                  onDragEnd={handleToolDragEnd}
-                  onClick={() => {
-                    if (shouldIgnoreToolbarClick()) {
-                      return;
-                    }
-
-                    togglePendingInsertTool({ kind: "shortcut", shortcutId: shortcut.id });
-                  }}
-                >
-                  {renderShortcutGlyph(shortcut)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="toolbar-row toolbar-row-secondary sidebar-block sidebar-block-compact">
-            <p className="sidebar-block-label">{t("toolbar.highSchoolTools")}</p>
-            <div className="toolbar-shortcut-group toolbar-shortcut-group-symbols" aria-label={t("toolbar.highSchoolShortcuts")}>
-              {visibleHighSchoolInlineShortcuts.map((shortcut) => (
-                <button
-                  key={shortcut.id}
-                  type="button"
-                  className={`toolbar-shortcut toolbar-shortcut-symbol ${pendingInsertTool?.kind === "shortcut" && pendingInsertTool.shortcutId === shortcut.id ? "toolbar-shortcut-active" : ""}`}
-                  draggable
-                  title={shortcut.hint}
-                  aria-pressed={pendingInsertTool?.kind === "shortcut" && pendingInsertTool.shortcutId === shortcut.id}
-                  onDragStart={(event) => handleToolDragStart({ kind: "shortcut", shortcutId: shortcut.id }, event)}
-                  onDragEnd={handleToolDragEnd}
-                  onClick={() => {
-                    if (shouldIgnoreToolbarClick()) {
-                      return;
-                    }
-
-                    togglePendingInsertTool({ kind: "shortcut", shortcutId: shortcut.id });
-                  }}
-                >
-                  {renderShortcutGlyph(shortcut)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="toolbar-row toolbar-row-format sidebar-block sidebar-block-compact" aria-label={t("toolbar.formatting")}>
-            <p className="sidebar-block-label">{t("toolbar.formatting")}</p>
-            <div className="editor-local-toolbar-group">
-              {workbookUi.colorOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`color-chip ${state.activeColor === option.value ? "color-chip-active" : ""}`}
-                  style={{ backgroundColor: option.value, color: option.value }}
-                  aria-label={option.label}
-                  title={option.label}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => applyActiveColor(option.value)}
-                />
-              ))}
-            </div>
-
-            <div className="editor-local-toolbar-group">
-              <button type="button" className="chip-button chip-button-compact" aria-label={t("toolbar.bold")} title={t("toolbar.bold")} onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasBold}>
-                B
-              </button>
-              <button type="button" className="chip-button chip-button-compact" aria-label={t("toolbar.italic")} title={t("toolbar.italic")} onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasItalic}>
-                I
-              </button>
-              <button type="button" className="chip-button chip-button-compact" aria-label={t("toolbar.underline")} title={t("toolbar.underline")} onMouseDown={(event) => event.preventDefault()} onClick={toggleCanvasUnderline}>
-                <span style={{ textDecoration: "underline" }}>U</span>
-              </button>
-              <button type="button" className="chip-button chip-button-compact" aria-label={t("toolbar.decrease")} title={t("toolbar.decrease")} onMouseDown={(event) => event.preventDefault()} onClick={() => adjustCanvasSize("down")}>
-                A-
-              </button>
-              <button type="button" className="chip-button chip-button-compact" aria-label={t("toolbar.increase")} title={t("toolbar.increase")} onMouseDown={(event) => event.preventDefault()} onClick={() => adjustCanvasSize("up")}>
-                A+
-              </button>
-              <div className="toolbar-highlight-shell">
-                <button
-                  type="button"
-                  className={`chip-button toolbar-highlight-button ${openMenu === "highlight" || advancedTool === "highlight" ? "toolbar-highlight-button-active" : ""}`}
-                  aria-label={t("toolbar.highlighter")}
-                  title={t("toolbar.highlighter")}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => toggleMenu("highlight")}
-                >
-                  <span className="toolbar-highlight-marker" aria-hidden="true">
-                    <span className="toolbar-highlight-marker-tip" />
-                    <span className="toolbar-highlight-marker-body" />
-                    <span className="toolbar-highlight-marker-line" style={{ backgroundColor: selectedHighlightColor ?? DEFAULT_HIGHLIGHT_TOOL_COLOR }} />
-                  </span>
-                  <span className="toolbar-highlight-caret" aria-hidden="true">▾</span>
-                </button>
-
-                {openMenu === "highlight" ? (
-                  <div className="toolbar-highlight-panel" role="menu" aria-label={t("toolbar.chooseHighlighter")}>
-                    {workbookUi.highlightOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`toolbar-highlight-swatch ${(option.value || null) === state.activeHighlightColor && advancedTool === "highlight" ? "toolbar-highlight-swatch-active" : ""}`}
-                        aria-label={option.label}
-                        title={option.label}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => activateHighlightTool(option.value)}
-                      >
-                        <span className="toolbar-highlight-swatch-sample" style={option.value ? { backgroundColor: option.value } : undefined} />
-                        <span className="toolbar-highlight-swatch-label">{option.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "draw" ? "toolbar-shortcut-active" : ""}`}
-                title={t("toolbar.freehand")}
-                aria-label={t("toolbar.freehand")}
-                aria-pressed={advancedTool === "draw"}
-                onClick={() => toggleAdvancedToolMode("draw")}
-              >
-                ✎
-              </button>
-            </div>
-
-            <div className="editor-local-toolbar-group toolbar-advanced-group" aria-label={t("toolbar.advancedTools")}>
-              <button
-                type="button"
-                className={`toolbar-shortcut toolbar-shortcut-symbol ${advancedTool === "select" ? "sheet-tool-button-active" : ""}`}
-                title={t("toolbar.selection")}
-                aria-label={t("toolbar.selection")}
-                aria-pressed={advancedTool === "select"}
-                onClick={() => toggleAdvancedToolMode("select")}
-              >
-                <span className="selection-icon" aria-hidden="true" />
-              </button>
-              {selectedCount > 0 ? (
-                <button
-                  type="button"
-                  className="toolbar-shortcut toolbar-shortcut-symbol"
-                  title={t("toolbar.delete")}
-                  onClick={handleHeaderDelete}
-                >
-                  ×
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <footer className="sidebar-footer">
-          <div className="sidebar-settings">
-            <button
-              type="button"
-              className={`sidebar-settings-button ${openMenu === "settings" ? "sidebar-settings-button-active" : ""}`}
-              aria-haspopup="menu"
-              aria-expanded={openMenu === "settings"}
-              aria-label={t("toolbar.settings")}
-              title={t("toolbar.settings")}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => toggleMenu("settings")}
-            >
-              <span className="sidebar-settings-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                  <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Zm9 4.8-.02-2-2.18-.5a7.2 7.2 0 0 0-.72-1.72l1.18-1.9-1.42-1.42-1.9 1.18a7.2 7.2 0 0 0-1.72-.72L13 3h-2l-.5 2.18a7.2 7.2 0 0 0-1.72.72l-1.9-1.18-1.42 1.42 1.18 1.9a7.2 7.2 0 0 0-.72 1.72L3 11v2l2.18.5c.15.6.39 1.18.72 1.72l-1.18 1.9 1.42 1.42 1.9-1.18c.54.33 1.12.57 1.72.72L11 21h2l.5-2.18c.6-.15 1.18-.39 1.72-.72l1.9 1.18 1.42-1.42-1.18-1.9c.33-.54.57-1.12.72-1.72L21 13Z" />
-                </svg>
-              </span>
-              <span>{t("toolbar.settings")}</span>
-            </button>
-
-            {!isInstalledApp ? (
-              <button
-                type="button"
-                className={`sidebar-settings-button ${openMenu === "install" ? "sidebar-settings-button-active" : ""}`}
-                aria-label={t("toolbar.install")}
-                title={t("toolbar.install")}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  void installPwa();
-                }}
-              >
-                <span className="sidebar-settings-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.29a1 1 0 1 1 1.4 1.41l-4 3.99a1 1 0 0 1-1.4 0l-4-3.99a1 1 0 1 1 1.4-1.41L11 12.59V4a1 1 0 0 1 1-1Zm-7 14a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z" />
-                  </svg>
-                </span>
-                <span>{t("toolbar.install")}</span>
-              </button>
-            ) : null}
-
-            {openMenu === "install" && !canInstallApp ? (
-              <div className="sidebar-settings-panel" role="note" aria-label={t("toolbar.install")}>
-                <p className="sidebar-settings-copy">{t("toolbar.installHelp")}</p>
-              </div>
-            ) : null}
-
-            {openMenu === "settings" ? (
-              <div className="sidebar-settings-panel" role="menu" aria-label={t("toolbar.settings")}>
-                <label className="sheet-style-picker sidebar-settings-field">
-                  <span>{t("toolbar.language")}</span>
-                  <select
-                    className="sheet-style-select"
-                    value={locale}
-                    onChange={(event) => {
-                      handleLocaleChange(event.target.value);
-                      setOpenMenu(null);
-                    }}
-                    aria-label={t("toolbar.language")}
-                  >
-                    {Object.entries(localeLabels).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            ) : null}
-          </div>
-          <p className="sidebar-credit">
-            {t("toolbar.creditPrefix")}{" "}
-            <a href="https://www.champeau.info" target="_blank" rel="noreferrer">
-              Guillaume Champeau
-            </a>
-          </p>
-        </footer>
-
-      </header>
+      <WorkbookSidebar
+        t={t}
+        locale={locale}
+        isToolsPanelOpen={isToolsPanelOpen}
+        activeGeometryTool={activeGeometryTool}
+        geometryTools={workbookUi.geometryTools}
+        geometryPanelHelper={geometryPanelHelper}
+        operationStructuredTools={operationStructuredTools}
+        rootStructuredTool={rootStructuredTool}
+        commonInlineShortcuts={commonInlineShortcuts}
+        visibleHighSchoolInlineShortcuts={visibleHighSchoolInlineShortcuts}
+        pendingInsertTool={pendingInsertTool}
+        advancedTool={advancedTool}
+        colorOptions={workbookUi.colorOptions}
+        activeColor={state.activeColor}
+        highlightOptions={workbookUi.highlightOptions}
+        activeHighlightColor={state.activeHighlightColor}
+        selectedHighlightColor={selectedHighlightColor}
+        openMenu={openMenu}
+        selectedCount={selectedCount}
+        canInstallApp={canInstallApp}
+        isInstalledApp={isInstalledApp}
+        onCloseToolsPanel={() => setIsToolsPanelOpen(false)}
+        onToggleGeometryTool={toggleGeometryTool}
+        onStructuredToolDragStart={(toolId, event) => handleToolDragStart({kind: "structured", toolId}, event)}
+        onShortcutDragStart={(shortcutId, event) => handleToolDragStart({kind: "shortcut", shortcutId}, event)}
+        onToolDragEnd={handleToolDragEnd}
+        onTogglePendingStructuredTool={(toolId) => togglePendingInsertTool({kind: "structured", toolId})}
+        onTogglePendingShortcut={(shortcutId) => togglePendingInsertTool({kind: "shortcut", shortcutId})}
+        onToggleAdvancedToolMode={toggleAdvancedToolMode}
+        shouldIgnoreToolbarClick={shouldIgnoreToolbarClick}
+        onApplyActiveColor={applyActiveColor}
+        onToggleCanvasBold={toggleCanvasBold}
+        onToggleCanvasItalic={toggleCanvasItalic}
+        onToggleCanvasUnderline={toggleCanvasUnderline}
+        onAdjustCanvasSize={adjustCanvasSize}
+        onToggleMenu={toggleMenu}
+        onActivateHighlightTool={activateHighlightTool}
+        onHeaderDelete={handleHeaderDelete}
+        onInstallPwa={() => {
+          void installPwa();
+        }}
+        onLocaleChange={(nextLocale) => {
+          handleLocaleChange(nextLocale);
+          setOpenMenu(null);
+        }}
+      />
 
       <section className="editor-stage">
-        <div className="sheet-action-bar">
-          <div className="sheet-action-group">
-            <button type="button" className="toolbar-action ghost tablet-tools-toggle" onClick={() => setIsToolsPanelOpen(true)}>
-              {t("toolbar.tools")}
-            </button>
-            <button type="button" className="toolbar-action ghost" onClick={undoHistory} disabled={historyPast.length === 0}>
-              {t("toolbar.undo")}
-            </button>
-            <button type="button" className="toolbar-action ghost" onClick={redoHistory} disabled={historyFuture.length === 0}>
-              {t("toolbar.redo")}
-            </button>
-          </div>
-          <div className="sheet-action-group">
-            <button type="button" className="toolbar-action primary" onClick={exportPdf} disabled={isExporting !== null}>
-              {isExporting === "pdf" ? t("toolbar.exportPdfLoading") : "PDF"}
-            </button>
-            <button type="button" className="toolbar-action secondary" onClick={exportPng} disabled={isExporting !== null}>
-              {isExporting === "png" ? t("toolbar.exportPngLoading") : "PNG"}
-            </button>
-            <button type="button" className="toolbar-action ghost" onClick={printSheet} disabled={isExporting !== null}>
-              {isExporting === "print" ? t("toolbar.preparingPrint") : t("toolbar.print")}
-            </button>
-            <label className="sheet-style-picker sheet-style-picker-toolbar">
-              <select
-                className="sheet-style-select"
-                value={state.sheetStyle}
-                onChange={(event) => setState((current) => ({ ...current, sheetStyle: event.target.value as SheetStyle }))}
-                aria-label={t("toolbar.sheetStyle")}
-              >
-                {workbookUi.sheetStyleOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" className="toolbar-action ghost" onClick={resetDocument}>
-              {t("toolbar.newDocument")}
-            </button>
-          </div>
-        </div>
+        <WorkbookActionBar
+          t={t}
+          canOpenTools={!isToolsPanelOpen}
+          canUndo={historyPast.length > 0}
+          canRedo={historyFuture.length > 0}
+          isExporting={isExporting}
+          sheetStyle={state.sheetStyle}
+          sheetStyleOptions={workbookUi.sheetStyleOptions}
+          onOpenTools={() => setIsToolsPanelOpen(true)}
+          onUndo={undoHistory}
+          onRedo={redoHistory}
+          onExportPdf={exportPdf}
+          onExportPng={exportPng}
+          onPrint={printSheet}
+          onSheetStyleChange={(sheetStyle) => setState((current) => ({...current, sheetStyle}))}
+          onResetDocument={resetDocument}
+        />
 
         <div className="editor-sheet">
           <div className="document-canvas-viewport">
@@ -9120,637 +5141,145 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               />
             ) : null}
 
-            <svg
-              className={`canvas-geometry-layer ${activeGeometryTool ? "canvas-geometry-layer-passive" : ""}`}
-              width="100%"
-              height="100%"
-              viewBox={`0 0 ${getCanvasIntrinsicSize().width} ${getCanvasIntrinsicSize().height}`}
-              aria-hidden="true"
-            >
-              {state.geometry.map((shape) => {
-                const intrinsic = getCanvasIntrinsicSize();
-                const isSelected = selectedGeometryIds.includes(shape.id);
-                const bounds = getGeometryShapeBoundsPx(shape, intrinsic.width, intrinsic.height);
-                const strokeWidthPx = Math.max(1.2, mmToPx(shape.strokeWidthMm));
-
-                if (shape.kind === "point") {
-                  const x = mmToPx(shape.xMm);
-                  const y = mmToPx(shape.yMm);
-
-                  return (
-                    <g
-                      key={shape.id}
-                      ref={(node) => {
-                        geometryNodeRefs.current[shape.id] = node;
-                      }}
-                      className={`canvas-geometry-shape ${isSelected ? "canvas-geometry-shape-selected" : ""}`}
-                      onMouseDown={(event) => {
-                        if (activeGeometryTool) {
-                          return;
-                        }
-
-                        startDragging("geometry", shape.id, bounds.x, bounds.y, event);
-                      }}
-                      onTouchStart={(event) => {
-                        handleTouchDragStart("geometry", shape.id, bounds.x, bounds.y, event, Boolean(activeGeometryTool));
-                      }}
-                    >
-                      <circle className="canvas-geometry-hit" cx={x} cy={y} r={GEOMETRY_HIT_RADIUS_PX} />
-                      <circle className="canvas-geometry-point" cx={x} cy={y} r={mmToPx(GEOMETRY_POINT_RADIUS_MM)} fill={shape.color} />
-                      {isSelected ? <circle className="canvas-geometry-selection-ring" cx={x} cy={y} r={mmToPx(GEOMETRY_POINT_RADIUS_MM) + 6} fill="none" /> : null}
-                      {shape.label ? (
-                        <text className="canvas-geometry-label" x={x + 10} y={y - 10} fill={shape.color}>
-                          {shape.label}
-                        </text>
-                      ) : null}
-                    </g>
-                  );
-                }
-
-                if (shape.kind === "circle") {
-                  const cx = mmToPx(shape.cxMm);
-                  const cy = mmToPx(shape.cyMm);
-                  const radius = mmToPx(shape.radiusMm);
-                  const measurement = isSelected ? getGeometrySelectionMeasurement(shape) : null;
-
-                  return (
-                    <g
-                      key={shape.id}
-                      ref={(node) => {
-                        geometryNodeRefs.current[shape.id] = node;
-                      }}
-                      className={`canvas-geometry-shape ${isSelected ? "canvas-geometry-shape-selected" : ""}`}
-                      onMouseDown={(event) => {
-                        if (activeGeometryTool) {
-                          return;
-                        }
-
-                        startDragging("geometry", shape.id, bounds.x, bounds.y, event);
-                      }}
-                      onTouchStart={(event) => {
-                        handleTouchDragStart("geometry", shape.id, bounds.x, bounds.y, event, Boolean(activeGeometryTool));
-                      }}
-                    >
-                      <circle className="canvas-geometry-hit" cx={cx} cy={cy} r={Math.max(radius + 8, GEOMETRY_HIT_RADIUS_PX)} fill="none" />
-                      <circle className="canvas-geometry-circle" cx={cx} cy={cy} r={radius} fill="none" stroke={shape.color} strokeWidth={strokeWidthPx} />
-                      <circle className="canvas-geometry-center" cx={cx} cy={cy} r={Math.max(1.2, strokeWidthPx)} fill={shape.color} />
-                      {isSelected ? <circle className="canvas-geometry-selection-ring" cx={cx} cy={cy} r={radius + 6} fill="none" /> : null}
-                      {measurement ? (
-                        <text className="canvas-geometry-measure" x={cx} y={cy - radius - 14} textAnchor="middle">
-                          {measurement}
-                        </text>
-                      ) : null}
-                    </g>
-                  );
-                }
-
-                if (shape.kind === "arc") {
-                  const arc = getGeometryArcPathData(
-                    { xMm: shape.cxMm, yMm: shape.cyMm },
-                    shape.radiusMm,
-                    shape.startAngle,
-                    shape.endAngle
-                  );
-
-                  return (
-                    <g
-                      key={shape.id}
-                      ref={(node) => {
-                        geometryNodeRefs.current[shape.id] = node;
-                      }}
-                      className={`canvas-geometry-shape ${isSelected ? "canvas-geometry-shape-selected" : ""}`}
-                      onMouseDown={(event) => {
-                        if (activeGeometryTool) {
-                          return;
-                        }
-
-                        startDragging("geometry", shape.id, bounds.x, bounds.y, event);
-                      }}
-                      onTouchStart={(event) => {
-                        handleTouchDragStart("geometry", shape.id, bounds.x, bounds.y, event, Boolean(activeGeometryTool));
-                      }}
-                    >
-                      <path className="canvas-geometry-hit" d={arc.path} fill="none" />
-                      <path className="canvas-geometry-line" d={arc.path} fill="none" stroke={shape.color} strokeWidth={1} />
-                      {isSelected ? <path className="canvas-geometry-selection-ring" d={arc.path} fill="none" /> : null}
-                    </g>
-                  );
-                }
-
-                const rendered = getRenderedLinearGeometryPx(shape, intrinsic.width, intrinsic.height);
-
-                if (!rendered) {
-                  return null;
-                }
-
-                const measurement = isSelected ? getGeometrySelectionMeasurement(shape) : null;
-                const measurementX = (mmToPx(shape.axMm) + mmToPx(shape.bxMm)) / 2;
-                const measurementY = (mmToPx(shape.ayMm) + mmToPx(shape.byMm)) / 2 - 14;
-                const graduatedLineTicks = shape.kind === "graduated-line" ? getGraduatedLineRenderTicks(shape, intrinsic.width, intrinsic.height) : [];
-                const graduatedLineStartLabelPosition =
-                  shape.kind === "graduated-line" ? getGraduatedLineLabelPosition(rendered.x1, rendered.y1, rendered.x2, rendered.y2, 0) : null;
-                const graduatedLineEndLabelPosition =
-                  shape.kind === "graduated-line" ? getGraduatedLineLabelPosition(rendered.x1, rendered.y1, rendered.x2, rendered.y2, 1) : null;
-
-                return (
-                  <g
-                    key={shape.id}
-                    ref={(node) => {
-                      geometryNodeRefs.current[shape.id] = node;
-                    }}
-                    className={`canvas-geometry-shape ${isSelected ? "canvas-geometry-shape-selected" : ""}`}
-                    onMouseDown={(event) => {
-                      if (activeGeometryTool) {
-                        return;
-                      }
-
-                      startDragging("geometry", shape.id, bounds.x, bounds.y, event);
-                    }}
-                    onTouchStart={(event) => {
-                      handleTouchDragStart("geometry", shape.id, bounds.x, bounds.y, event, Boolean(activeGeometryTool));
-                    }}
-                  >
-                    <line className="canvas-geometry-hit" x1={rendered.x1} y1={rendered.y1} x2={rendered.x2} y2={rendered.y2} />
-                    {isSelected ? (
-                      <line
-                        className="canvas-geometry-selection-ring"
-                        x1={rendered.x1}
-                        y1={rendered.y1}
-                        x2={rendered.x2}
-                        y2={rendered.y2}
-                        strokeWidth={Math.max(8, strokeWidthPx + 6)}
-                        strokeLinecap="round"
-                      />
-                    ) : null}
-                    <line className={`canvas-geometry-line ${shape.kind === "graduated-line" ? "canvas-geometry-graduated-line" : ""}`} x1={rendered.x1} y1={rendered.y1} x2={rendered.x2} y2={rendered.y2} stroke={shape.color} strokeWidth={strokeWidthPx} />
-                    {shape.kind === "graduated-line" ? (
-                      graduatedLineTicks.map((tick, index) => (
-                        <line
-                          key={`${shape.id}-tick-${index}`}
-                          className="canvas-geometry-graduated-line-tick"
-                          x1={tick.x1}
-                          y1={tick.y1}
-                          x2={tick.x2}
-                          y2={tick.y2}
-                          stroke={shape.color}
-                          strokeWidth={tick.strokeWidth}
-                          strokeLinecap="round"
-                        />
-                      ))
-                    ) : null}
-                    {shape.kind === "graduated-line" ? (
-                      <>
-                        <text
-                          className="canvas-geometry-measure canvas-geometry-graduated-line-label"
-                          x={graduatedLineStartLabelPosition?.x ?? rendered.x1}
-                          y={graduatedLineStartLabelPosition?.y ?? rendered.y1}
-                          textAnchor={graduatedLineStartLabelPosition?.textAnchor ?? "middle"}
-                          dominantBaseline={graduatedLineStartLabelPosition?.dominantBaseline}
-                        >
-                          {getGraduatedLineEndpointLabel(shape, 0)}
-                        </text>
-                        <text
-                          className="canvas-geometry-measure canvas-geometry-graduated-line-label"
-                          x={graduatedLineEndLabelPosition?.x ?? rendered.x2}
-                          y={graduatedLineEndLabelPosition?.y ?? rendered.y2}
-                          textAnchor={graduatedLineEndLabelPosition?.textAnchor ?? "middle"}
-                          dominantBaseline={graduatedLineEndLabelPosition?.dominantBaseline}
-                        >
-                          {getGraduatedLineEndpointLabel(shape, 1)}
-                      </text>
-                    </>
-                  ) : null}
-                    {measurement ? (
-                      <text className="canvas-geometry-measure" x={measurementX} y={measurementY} textAnchor="middle">
-                        {measurement}
-                      </text>
-                    ) : null}
-                    {shape.kind === "segment" ? (
-                      <>
-                        <circle className="canvas-geometry-endpoint" cx={mmToPx(shape.axMm)} cy={mmToPx(shape.ayMm)} r={Math.max(2, strokeWidthPx + 0.6)} fill={shape.color} />
-                        <circle className="canvas-geometry-endpoint" cx={mmToPx(shape.bxMm)} cy={mmToPx(shape.byMm)} r={Math.max(2, strokeWidthPx + 0.6)} fill={shape.color} />
-                      </>
-                    ) : shape.kind === "ray" ? (
-                      <circle className="canvas-geometry-endpoint" cx={mmToPx(shape.axMm)} cy={mmToPx(shape.ayMm)} r={Math.max(2, strokeWidthPx + 0.6)} fill={shape.color} />
-                    ) : null}
-                  </g>
-                );
-              })}
-              {geometryMeasurement ? (
-                <>
-                  <line
-                    className="canvas-geometry-preview canvas-geometry-measure-line"
-                    x1={mmToPx(geometryMeasurement.start.xMm)}
-                    y1={mmToPx(geometryMeasurement.start.yMm)}
-                    x2={mmToPx(geometryMeasurement.end.xMm)}
-                    y2={mmToPx(geometryMeasurement.end.yMm)}
-                  />
-                  <text
-                    className="canvas-geometry-measure"
-                    x={(mmToPx(geometryMeasurement.start.xMm) + mmToPx(geometryMeasurement.end.xMm)) / 2}
-                    y={(mmToPx(geometryMeasurement.start.yMm) + mmToPx(geometryMeasurement.end.yMm)) / 2 - 14}
-                    textAnchor="middle"
-                  >
-                    {`${Math.round(
-                      Math.hypot(
-                        geometryMeasurement.end.xMm - geometryMeasurement.start.xMm,
-                        geometryMeasurement.end.yMm - geometryMeasurement.start.yMm
-                      )
-                    )} mm`}
-                  </text>
-                </>
-              ) : null}
-              {geometryAngleMeasurement ? renderProtractorOverlay(geometryAngleMeasurement.vertex, geometryAngleMeasurement.baseline, geometryAngleMeasurement.end, "final") : null}
-              {geometryDraft ? (
-                (() => {
-                  const intrinsic = getCanvasIntrinsicSize();
-
-                  if (geometryDraft.tool === "measure") {
-                    return (
-                      <line
-                        className="canvas-geometry-preview canvas-geometry-measure-line"
-                        x1={mmToPx(geometryDraft.start.xMm)}
-                        y1={mmToPx(geometryDraft.start.yMm)}
-                        x2={mmToPx(geometryDraft.current.xMm)}
-                        y2={mmToPx(geometryDraft.current.yMm)}
-                      />
-                    );
-                  }
-
-                  const previewShape = createGeometryShapeFromDraft(geometryDraft);
-
-                  if (!previewShape) {
-                    return null;
-                  }
-
-                  if (previewShape.kind === "point") {
-                    const x = mmToPx(previewShape.xMm);
-                    const y = mmToPx(previewShape.yMm);
-
-                    return <circle className="canvas-geometry-preview" cx={x} cy={y} r={mmToPx(GEOMETRY_POINT_RADIUS_MM)} />;
-                  }
-
-                  if (previewShape.kind === "circle") {
-                    return (
-                      <circle
-                        className="canvas-geometry-preview"
-                        cx={mmToPx(previewShape.cxMm)}
-                        cy={mmToPx(previewShape.cyMm)}
-                        r={mmToPx(previewShape.radiusMm)}
-                      />
-                    );
-                  }
-
-                  const rendered = getRenderedLinearGeometryPx(previewShape, intrinsic.width, intrinsic.height);
-
-                  if (!rendered) {
-                    return null;
-                  }
-
-                  return <line className="canvas-geometry-preview" x1={rendered.x1} y1={rendered.y1} x2={rendered.x2} y2={rendered.y2} />;
-                })()
-              ) : null}
-              {geometryProtractorDraft?.vertex
-                ? renderProtractorOverlay(geometryProtractorDraft.vertex, geometryProtractorDraft.firstPoint, geometryProtractorDraft.current, "draft")
-                : null}
-              {geometryCompassDraft ? (
-                (() => {
-                  const centerX = mmToPx(geometryCompassDraft.center.xMm);
-                  const centerY = mmToPx(geometryCompassDraft.center.yMm);
-
-                  if (geometryCompassDraft.phase === "radius") {
-                    return (
-                      <>
-                        <circle className="canvas-geometry-point" cx={centerX} cy={centerY} r={mmToPx(GEOMETRY_POINT_RADIUS_MM)} />
-                        <line
-                          className="canvas-geometry-preview canvas-geometry-measure-line"
-                          x1={centerX}
-                          y1={centerY}
-                          x2={mmToPx(geometryCompassDraft.current.xMm)}
-                          y2={mmToPx(geometryCompassDraft.current.yMm)}
-                        />
-                      </>
-                    );
-                  }
-
-                  if (!geometryCompassDraft.startPoint || geometryCompassDraft.radiusMm === null || geometryCompassDraft.startAngle === null) {
-                    return null;
-                  }
-
-                  const radiusMm = Math.hypot(
-                    geometryCompassDraft.startPoint.xMm - geometryCompassDraft.center.xMm,
-                    geometryCompassDraft.startPoint.yMm - geometryCompassDraft.center.yMm
-                  );
-                  const arc = getGeometryArcPathData(
-                    geometryCompassDraft.center,
-                    radiusMm,
-                    geometryCompassDraft.startAngle,
-                    geometryCompassDraft.startAngle + geometryCompassDraft.accumulatedSweep
-                  );
-
-                  return (
-                    <>
-                      <circle className="canvas-geometry-point" cx={centerX} cy={centerY} r={mmToPx(GEOMETRY_POINT_RADIUS_MM)} />
-                      <line
-                        className="canvas-geometry-preview canvas-geometry-measure-line"
-                        x1={centerX}
-                        y1={centerY}
-                        x2={mmToPx(geometryCompassDraft.startPoint.xMm)}
-                        y2={mmToPx(geometryCompassDraft.startPoint.yMm)}
-                      />
-                      <line
-                        className="canvas-geometry-preview canvas-geometry-measure-line"
-                        x1={centerX}
-                        y1={centerY}
-                        x2={mmToPx(geometryCompassDraft.current.xMm)}
-                        y2={mmToPx(geometryCompassDraft.current.yMm)}
-                      />
-                      <path className="canvas-geometry-preview canvas-geometry-compass-arc" d={arc.path} fill="none" />
-                    </>
-                  );
-                })()
-              ) : null}
-            </svg>
+            <GeometryCanvasLayer
+              width={getCanvasIntrinsicSize().width}
+              height={getCanvasIntrinsicSize().height}
+              geometry={state.geometry}
+              selectedGeometryIds={selectedGeometryIds}
+              activeGeometryTool={activeGeometryTool}
+              geometryMeasurement={geometryMeasurement}
+              geometryAngleMeasurement={geometryAngleMeasurement}
+              geometryDraft={geometryDraft}
+              geometryProtractorDraft={geometryProtractorDraft}
+              geometryCompassDraft={geometryCompassDraft}
+              setGeometryNodeRef={(shapeId, node) => {
+                geometryNodeRefs.current[shapeId] = node;
+              }}
+              startDraggingGeometry={(shapeId, x, y, event) => {
+                startDragging("geometry", shapeId, x, y, event);
+              }}
+              startTouchDraggingGeometry={(shapeId, x, y, event, ignoreDrag) => {
+                handleTouchDragStart("geometry", shapeId, x, y, event, ignoreDrag);
+              }}
+              renderProtractorOverlay={renderProtractorOverlay}
+              createGeometryShapeFromDraft={createGeometryShapeFromDraft}
+            />
 
             {state.blocks.map((block) => (
-              <article
+              <FloatingMathBlockItem
                 key={block.id}
-                ref={(node) => {
+                block={block}
+                isSelected={selectedBlockIds.includes(block.id)}
+                isEditing={editingBlock?.blockId === block.id}
+                renderInlineBlockEditor={renderInlineBlockEditor}
+                setNodeRef={(node) => {
                   blockNodeRefs.current[block.id] = node;
                 }}
-                className={`floating-math-block ${selectedBlockIds.includes(block.id) ? "floating-math-block-selected" : ""}`}
-                style={{
-                  left: `${block.x}px`,
-                  top: `${block.y}px`,
-                  color: block.color,
-                  fontSize: `${block.fontSize}rem`,
-                  fontWeight: block.fontWeight,
-                  fontStyle: block.fontStyle,
-                  textDecoration: block.underline ? "underline" : "none",
-                  backgroundColor: block.highlightColor ?? undefined
-                }}
-                onMouseDown={(event) => {
+                onDragStart={(event) => {
                   startDragging("block", block.id, block.x, block.y, event);
                 }}
-                onTouchStart={(event) => {
+                onTouchDragStart={(event) => {
                   handleTouchDragStart("block", block.id, block.x, block.y, event);
                 }}
-                onDoubleClick={(event) => {
-                  event.stopPropagation();
+                onDoubleClick={() => {
                   openEditModal(block.id);
                 }}
-              >
-                {editingBlock?.blockId === block.id ? (
-                  renderInlineBlockEditor(block)
-                ) : (
-                  renderInteractiveMathPreview(block)
-                )}
-              </article>
+                onBeginBlockEditing={beginBlockEditing}
+              />
             ))}
 
-            {state.symbols.map((symbol) => {
-              const isVectorSymbol = symbol.kind === "sum" || symbol.kind === "integral";
-              const isSelected = selectedSymbolIds.includes(symbol.id);
-              const symbolSize = Math.max(24, Math.round(symbol.size ?? (symbol.kind === "integral" ? DEFAULT_INTEGRAL_SYMBOL_SIZE : symbol.fontSize * 18)));
-
-              return (
-                <button
-                  key={symbol.id}
-                  type="button"
-                  ref={(node) => {
-                    symbolNodeRefs.current[symbol.id] = node;
-                  }}
-                  className={`floating-math-symbol ${isVectorSymbol ? "floating-math-symbol-sum" : ""} ${symbol.kind === "integral" ? "floating-math-symbol-integral" : ""} ${isSelected ? "floating-math-symbol-selected" : ""}`}
-                  style={{
-                    left: `${symbol.x}px`,
-                    top: `${symbol.y}px`,
-                    width: isVectorSymbol ? `${symbolSize}px` : undefined,
-                    height: isVectorSymbol ? `${symbolSize}px` : undefined,
-                    color: symbol.color,
-                    fontSize: isVectorSymbol ? undefined : `${symbol.fontSize}rem`,
-                    fontWeight: symbol.fontWeight,
-                    fontStyle: symbol.fontStyle,
-                    textDecoration: symbol.underline ? "underline" : "none",
-                    backgroundColor: symbol.highlightColor ?? undefined
-                  }}
-                  onMouseDown={(event) => {
-                    startDragging("symbol", symbol.id, symbol.x, symbol.y, event);
-                  }}
-                  onTouchStart={(event) => {
-                    handleTouchDragStart("symbol", symbol.id, symbol.x, symbol.y, event);
-                  }}
-                >
-                  {isVectorSymbol ? (
-                    <>
-                      <span className={`floating-math-symbol-sum-vector ${symbol.kind === "integral" ? "floating-math-symbol-integral-vector" : ""}`} aria-hidden="true">
-                        {symbol.kind === "integral" ? renderIntegralSymbolSvg(symbolSize) : renderSumSymbolSvg(symbolSize)}
-                      </span>
-                      {isSelected ? (
-                        <>
-                          <span
-                            className="floating-math-symbol-resize-handle floating-math-symbol-resize-handle-nw"
-                            aria-hidden="true"
-                            onMouseDownCapture={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              startSymbolResize(symbol.id, "nw", event.clientX, event.clientY);
-                            }}
-                            onTouchStartCapture={(event) => {
-                              const touch = event.touches[0];
-
-                              if (!touch) {
-                                return;
-                              }
-
-                              event.preventDefault();
-                              event.stopPropagation();
-                              startSymbolResize(symbol.id, "nw", touch.clientX, touch.clientY);
-                            }}
-                          />
-                          <span
-                            className="floating-math-symbol-resize-handle floating-math-symbol-resize-handle-se"
-                            aria-hidden="true"
-                            onMouseDownCapture={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              startSymbolResize(symbol.id, "se", event.clientX, event.clientY);
-                            }}
-                            onTouchStartCapture={(event) => {
-                              const touch = event.touches[0];
-
-                              if (!touch) {
-                                return;
-                              }
-
-                              event.preventDefault();
-                              event.stopPropagation();
-                              startSymbolResize(symbol.id, "se", touch.clientX, touch.clientY);
-                            }}
-                          />
-                        </>
-                      ) : null}
-                    </>
-                  ) : (
-                    symbol.content
-                  )}
-                </button>
-              );
-            })}
+            {state.symbols.map((symbol) => (
+              <FloatingMathSymbolItem
+                key={symbol.id}
+                symbol={symbol}
+                isSelected={selectedSymbolIds.includes(symbol.id)}
+                setNodeRef={(node) => {
+                  symbolNodeRefs.current[symbol.id] = node;
+                }}
+                onDragStart={(event) => {
+                  startDragging("symbol", symbol.id, symbol.x, symbol.y, event);
+                }}
+                onTouchDragStart={(event) => {
+                  handleTouchDragStart("symbol", symbol.id, symbol.x, symbol.y, event);
+                }}
+                onResizeStart={(handle, clientX, clientY) => {
+                  startSymbolResize(symbol.id, handle, clientX, clientY);
+                }}
+              />
+            ))}
 
             {state.textBoxes.map((textBox) => (
-              (() => {
-                const isAngleTextBox = textBox.notation === "angle";
+              <FloatingTextBoxItem
+                key={textBox.id}
+                textBox={textBox}
+                t={t}
+                isSelected={selectedTextBoxIds.includes(textBox.id)}
+                isEditing={editingTextBoxId === textBox.id}
+                shortcuts={textBoxShortcuts}
+                setNodeRef={(node) => {
+                  textBoxNodeRefs.current[textBox.id] = node;
+                }}
+                getShortcutLayout={getFloatingTextShortcutLayout}
+                onDragStart={(event) => {
+                  startDragging("textBox", textBox.id, textBox.x, textBox.y, event);
+                }}
+                onTouchDragStart={(event) => {
+                  handleTouchDragStart("textBox", textBox.id, textBox.x, textBox.y, event, editingTextBoxId === textBox.id);
+                }}
+                onDoubleClick={() => {
+                  beginTextBoxEditing(textBox.id);
+                }}
+                onMouseDownInput={() => {
+                  setCanvasQuickMenu(null);
+                  selectSingleTextBox(textBox.id);
+                }}
+                onFocusInput={() => {
+                  selectSingleTextBox(textBox.id);
+                }}
+                onTextChange={(nextText) => {
+                  const minimumWidth = textBox.variant === "note" ? 56 : 100;
 
-                return (
-                  <article
-                    key={textBox.id}
-                    ref={(node) => {
-                      textBoxNodeRefs.current[textBox.id] = node;
-                    }}
-                    className={`floating-text-box ${textBox.variant === "note" ? "floating-text-box-note" : ""} ${selectedTextBoxIds.includes(textBox.id) ? "floating-text-box-selected" : ""}`}
-                    style={{
-                      left: `${textBox.x}px`,
-                      top: `${textBox.y}px`,
-                      width: `${textBox.width}px`,
-                      zIndex: editingTextBoxId === textBox.id ? 9 : undefined,
-                      color: textBox.color,
-                      fontSize: `${textBox.fontSize}rem`,
-                      fontWeight: textBox.fontWeight,
-                      fontStyle: textBox.fontStyle,
-                      textDecoration: textBox.underline ? "underline" : "none",
-                      backgroundColor: textBox.highlightColor ?? undefined
-                    }}
-                    onMouseDown={(event) => {
-                      if (editingTextBoxId === textBox.id) {
-                        return;
-                      }
+                  updateTextBox(textBox.id, {
+                    text: nextText,
+                    width: Math.max(minimumWidth, getTextBoxWidth(nextText))
+                  });
+                }}
+                onSubmit={() => {
+                  closeFloatingTextEditing();
+                }}
+                onBlurInput={(value) => {
+                  if (!value.trim()) {
+                    removeTextBox(textBox.id);
+                    setEditingTextBoxId(null);
+                    scheduleTransientHistoryCommit("edit");
+                    return;
+                  }
 
-                      startDragging("textBox", textBox.id, textBox.x, textBox.y, event);
-                    }}
-                    onTouchStart={(event) => {
-                      handleTouchDragStart("textBox", textBox.id, textBox.x, textBox.y, event, editingTextBoxId === textBox.id);
-                    }}
-                    onDoubleClick={(event) => {
-                      event.stopPropagation();
-                      beginTextBoxEditing(textBox.id);
-                    }}
-                  >
-                    {editingTextBoxId === textBox.id ? (
-                      (() => {
-                        const shortcutLayout = getFloatingTextShortcutLayout(textBox.id);
-
-                        return (
-                          <>
-                            <div
-                              className={`floating-text-shortcuts ${shortcutLayout.className}`}
-                              style={shortcutLayout.style}
-                              onMouseDown={(event) => event.stopPropagation()}
-                            >
-                              {textBoxShortcuts.map((shortcut) => (
-                                <button
-                                  key={shortcut.id}
-                                  type="button"
-                                  className="floating-text-shortcut"
-                                  title={shortcut.hint}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={() => insertIntoEditingTextBox(textBox.id, shortcut.content)}
-                                >
-                                  {renderShortcutGlyph(shortcut)}
-                                </button>
-                              ))}
-                            </div>
-                            <div className={isAngleTextBox ? "floating-text-angle-prefix" : ""}>
-                              {isAngleTextBox ? <span className="floating-text-angle-marker" aria-hidden="true">∠</span> : null}
-                              <input
-                                type="text"
-                                className="floating-text-input"
-                                value={textBox.text}
-                                placeholder={t("canvas.writeHere")}
-                                onMouseDown={(event) => {
-                                  setCanvasQuickMenu(null);
-                                  event.stopPropagation();
-                                  selectSingleTextBox(textBox.id);
-                                }}
-                                onFocus={() => {
-                                  selectSingleTextBox(textBox.id);
-                                }}
-                                onChange={(event) => {
-                                  const nextText = event.target.value;
-                                  const minimumWidth = textBox.variant === "note" ? 56 : 100;
-
-                                  updateTextBox(textBox.id, {
-                                    text: nextText,
-                                    width: Math.max(minimumWidth, getTextBoxWidth(nextText))
-                                  });
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key !== "Enter") {
-                                    return;
-                                  }
-
-                                  event.preventDefault();
-                                  event.currentTarget.blur();
-                                }}
-                                onBlur={(event) => {
-                                  if (!event.currentTarget.value.trim()) {
-                                    removeTextBox(textBox.id);
-                                    setEditingTextBoxId(null);
-                                    scheduleTransientHistoryCommit("edit");
-                                    return;
-                                  }
-
-                                  updateTextBox(textBox.id, {
-                                    text: event.currentTarget.value.trim(),
-                                    width: Math.max(textBox.variant === "note" ? 56 : 36, getTextBoxWidth(event.currentTarget.value))
-                                  });
-                                  setEditingTextBoxId(null);
-                                  clearFloatingSelection();
-                                  scheduleTransientHistoryCommit("edit");
-                                }}
-                              />
-                            </div>
-                          </>
-                        );
-                      })()
-                    ) : isAngleTextBox ? (
-                      <div className="floating-text-angle-prefix">
-                        <span className="floating-text-angle-marker" aria-hidden="true">∠</span>
-                        <div className="floating-text-content">
-                          {textBox.text || "ABC"}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="floating-text-content">
-                        {textBox.text || t("canvas.emptyTextBox")}
-                      </div>
-                    )}
-                  </article>
-                );
-              })()
+                  updateTextBox(textBox.id, {
+                    text: value.trim(),
+                    width: Math.max(textBox.variant === "note" ? 56 : 36, getTextBoxWidth(value))
+                  });
+                  setEditingTextBoxId(null);
+                  clearFloatingSelection();
+                  scheduleTransientHistoryCommit("edit");
+                }}
+                onInsertShortcut={(content) => {
+                  insertIntoEditingTextBox(textBox.id, content);
+                }}
+              />
             ))}
 
-            <svg
-              className={`canvas-draw-layer ${advancedTool === "draw" || advancedTool === "highlight" || advancedTool === "graduated-line" ? "canvas-draw-layer-active" : ""}`}
-              width="100%"
-              height="100%"
-              onMouseMove={(event) => {
-                if (advancedTool === "highlight") {
-                  updateInsertCursorPreview(event.clientX, event.clientY);
-                }
+            <DrawCanvasLayer
+              advancedTool={advancedTool}
+              strokes={state.strokes}
+              selectedStrokeIds={selectedStrokeIds}
+              draftStroke={draftStroke}
+              draftStrokeStyle={draftStrokeStyleRef.current}
+              graduatedLineDraft={graduatedLineDraft}
+              setStrokeNodeRef={(strokeId, node) => {
+                strokeNodeRefs.current[strokeId] = node;
               }}
-              onMouseLeave={() => {
-                if (advancedTool === "highlight") {
-                  hideInsertCursorPreview();
-                }
-              }}
-              onMouseDown={(event) => {
-                if (advancedTool !== "draw" && advancedTool !== "highlight" && advancedTool !== "graduated-line") {
-                  return;
-                }
-
-                event.preventDefault();
-                event.stopPropagation();
-
+              beginDrawOrGraduatedLine={(clientX, clientY) => {
                 if (editingBlock?.blockId) {
                   finishBlockEditing(editingBlock.blockId);
                 }
@@ -9761,95 +5290,25 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
 
                 if (advancedTool === "graduated-line") {
                   if (graduatedLineDraftRef.current) {
-                    finishGraduatedLineDrawing(event.clientX, event.clientY);
+                    finishGraduatedLineDrawing(clientX, clientY);
                     return;
                   }
 
-                  beginGraduatedLineDrawing(event.clientX, event.clientY);
+                  beginGraduatedLineDrawing(clientX, clientY);
                   return;
                 }
 
-                beginFreehandDrawing(event.clientX, event.clientY);
+                beginFreehandDrawing(clientX, clientY);
               }}
-              onTouchStart={(event) => {
-                if ((advancedTool !== "draw" && advancedTool !== "highlight" && advancedTool !== "graduated-line") || event.touches.length === 0) {
-                  return;
-                }
-
-                event.preventDefault();
-                event.stopPropagation();
-
-                if (editingBlock?.blockId) {
-                  finishBlockEditing(editingBlock.blockId);
-                }
-
-                if (editingTextBoxId) {
-                  closeFloatingTextEditing();
-                }
-
-                const touch = event.touches[0];
-                if (advancedTool === "graduated-line") {
-                  if (graduatedLineDraftRef.current) {
-                    finishGraduatedLineDrawing(touch.clientX, touch.clientY);
-                    return;
-                  }
-
-                  beginGraduatedLineDrawing(touch.clientX, touch.clientY);
-                  return;
-                }
-
-                beginFreehandDrawing(touch.clientX, touch.clientY);
+              updateHighlightCursor={updateInsertCursorPreview}
+              hideHighlightCursor={hideInsertCursorPreview}
+              startDraggingStroke={(strokeId, x, y, event) => {
+                startDragging("stroke", strokeId, x, y, event);
               }}
-            >
-              {state.strokes.map((stroke) => {
-                const strokeBounds = getStrokeBounds(stroke.points);
-
-                return (
-                  <g
-                    key={stroke.id}
-                    ref={(node) => {
-                      strokeNodeRefs.current[stroke.id] = node;
-                    }}
-                    className={`canvas-draw-stroke-group ${selectedStrokeIds.includes(stroke.id) ? "canvas-draw-stroke-group-selected" : ""}`}
-                    onMouseDown={(event) => {
-                      if (advancedTool === "draw" || advancedTool === "highlight") {
-                        return;
-                      }
-
-                      startDragging("stroke", stroke.id, strokeBounds.x, strokeBounds.y, event);
-                    }}
-                    onTouchStart={(event) => {
-                      handleTouchDragStart("stroke", stroke.id, strokeBounds.x, strokeBounds.y, event, advancedTool === "draw" || advancedTool === "highlight");
-                    }}
-                  >
-                    <path className="canvas-draw-hit" d={createStrokePath(stroke.points)} fill="none" />
-                    <path className="canvas-draw-path" d={createStrokePath(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeOpacity={stroke.opacity} />
-                    {selectedStrokeIds.includes(stroke.id) ? (
-                      <path className="canvas-draw-path canvas-draw-path-selected" d={createStrokePath(stroke.points)} fill="none" stroke="rgba(217, 119, 69, 0.8)" strokeWidth={5.2} />
-                    ) : null}
-                  </g>
-                );
-              })}
-              {draftStroke && draftStroke.length >= 2 ? (
-                <path
-                  className="canvas-draw-path canvas-draw-path-draft"
-                  d={createStrokePath(draftStroke)}
-                  fill="none"
-                  stroke={draftStrokeStyleRef.current.color}
-                  strokeWidth={draftStrokeStyleRef.current.width}
-                  strokeOpacity={draftStrokeStyleRef.current.opacity}
-                />
-              ) : null}
-              {graduatedLineDraft ? (
-                <line
-                  className="canvas-geometry-preview canvas-geometry-graduated-line-preview"
-                  x1={mmToPx(graduatedLineDraft.start.xMm)}
-                  y1={mmToPx(graduatedLineDraft.start.yMm)}
-                  x2={mmToPx(graduatedLineDraft.current.xMm)}
-                  y2={mmToPx(graduatedLineDraft.current.yMm)}
-                />
-              ) : null}
-            </svg>
+              startTouchDraggingStroke={(strokeId, x, y, event, ignoreDrag) => {
+                handleTouchDragStart("stroke", strokeId, x, y, event, ignoreDrag);
+              }}
+            />
 
             {snapGuides.x !== null ? (
               <div className="canvas-snap-guide canvas-snap-guide-vertical" style={{ left: `${snapGuides.x}px` }} aria-hidden="true" />
@@ -9859,375 +5318,100 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               <div className="canvas-snap-guide canvas-snap-guide-horizontal" style={{ top: `${snapGuides.y}px` }} aria-hidden="true" />
             ) : null}
 
-            {multiSelectionMenuPosition ? (
-              <div
-                className="canvas-quick-menu canvas-selection-menu"
-                style={{ left: `${multiSelectionMenuPosition.x}px`, top: `${multiSelectionMenuPosition.y}px` }}
-                data-placement={multiSelectionMenuPosition.placement}
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  className="canvas-quick-action canvas-selection-action"
-                  aria-label={t("canvas.align")}
-                  title={t("canvas.align")}
-                  onClick={alignSelectedItems}
-                >
-                  <span className="align-grid-icon" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="canvas-quick-action canvas-selection-action"
-                  aria-label={t("toolbar.delete")}
-                  title={t("toolbar.delete")}
-                  onClick={removeSelectedItems}
-                >
-                  ×
-                </button>
-              </div>
-            ) : null}
+            <SelectionMenu t={t} position={multiSelectionMenuPosition} onAlign={alignSelectedItems} onDelete={removeSelectedItems} />
 
-            {selectedGeometry && selectedGeometryMenuPosition ? (
-              <div
-                ref={selectedGeometryMenuRef}
-                className="canvas-quick-menu canvas-geometry-settings-menu"
-                style={{ left: `${selectedGeometryMenuPosition.x}px`, top: `${selectedGeometryMenuPosition.y}px` }}
-                data-placement={selectedGeometryMenuPosition.placement}
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  className="canvas-quick-close"
-                  aria-label={t("canvas.closeSettings")}
-                  title={t("canvas.closeSettings")}
-                  onClick={clearFloatingSelection}
-                >
-                  ×
-                </button>
-                <p className="geometry-settings-title">{t("canvas.settings")}</p>
-                {selectedGeometry.kind === "point" ? (
-                  <label className="geometry-settings-field">
-                    <span>{t("canvas.pointName")}</span>
-                    <input
-                      type="text"
-                      value={selectedGeometry.label}
-                      placeholder="A"
-                      onChange={(event) => updateSelectedPointLabel(event.target.value.toUpperCase().slice(0, 4))}
-                    />
-                  </label>
-                ) : null}
-                {selectedGeometry.kind === "segment" ? (
-                  <label className="geometry-settings-field">
-                    <span>{t("canvas.segmentLength")}</span>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={Math.round(Math.hypot(selectedGeometry.bxMm - selectedGeometry.axMm, selectedGeometry.byMm - selectedGeometry.ayMm))}
-                      onChange={(event) => updateSelectedSegmentLengthMm(event.target.value)}
-                    />
-                  </label>
-                ) : null}
-                {selectedGeometry.kind === "circle" ? (
-                  <label className="geometry-settings-field">
-                    <span>{t("canvas.circleRadius")}</span>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={Math.round(selectedGeometry.radiusMm)}
-                      onChange={(event) => updateSelectedCircleRadiusMm(event.target.value)}
-                    />
-                  </label>
-                ) : null}
-                {selectedGeometry.kind === "graduated-line" ? (
-                  <label className="geometry-settings-field">
-                    <span>{t("modalFields.startAt")}</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={selectedGraduatedLineSettings?.startValue ?? String(selectedGeometry.startValue ?? 0)}
-                      onChange={(event) => {
-                        const nextValue = event.target.value.replace(/[^0-9-]/g, "");
-                        patchSelectedGraduatedLineSettings({ startValue: nextValue });
-                        updateSelectedGraduatedLineStartValue(nextValue);
-                      }}
-                      placeholder="0"
-                    />
-                  </label>
-                ) : null}
-                {selectedGeometry.kind === "graduated-line" ? (
-                  <label className="geometry-settings-field">
-                    <span>{t("modalFields.sections")}</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={selectedGraduatedLineSettings?.sections ?? String(selectedGeometry.sections ?? 10)}
-                      onChange={(event) => {
-                        const nextValue = event.target.value.replace(/[^0-9]/g, "");
-                        patchSelectedGraduatedLineSettings({ sections: nextValue });
-                        updateSelectedGraduatedLineSections(nextValue);
-                      }}
-                    />
-                  </label>
-                ) : null}
-              </div>
-            ) : null}
+            <GeometrySettingsMenu
+              t={t}
+              menuRef={selectedGeometryMenuRef}
+              position={selectedGeometryMenuPosition}
+              selectedGeometry={selectedGeometry}
+              selectedGraduatedLineSettings={selectedGraduatedLineSettings}
+              onClose={clearFloatingSelection}
+              onPointLabelChange={updateSelectedPointLabel}
+              onSegmentLengthChange={updateSelectedSegmentLengthMm}
+              onCircleRadiusChange={updateSelectedCircleRadiusMm}
+              onGraduatedLineStartValueChange={(nextValue) => {
+                patchSelectedGraduatedLineSettings({startValue: nextValue});
+                updateSelectedGraduatedLineStartValue(nextValue);
+              }}
+              onGraduatedLineSectionsChange={(nextValue) => {
+                patchSelectedGraduatedLineSettings({sections: nextValue});
+                updateSelectedGraduatedLineSections(nextValue);
+              }}
+            />
 
-            {selectedTextBoxMenuPosition ? (
-              <div
-                ref={selectedTextBoxMenuRef}
-                className="canvas-quick-menu canvas-text-format-menu"
-                style={{ left: `${selectedTextBoxMenuPosition.x}px`, top: `${selectedTextBoxMenuPosition.y}px` }}
-                data-placement={selectedTextBoxMenuPosition.placement}
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  className="canvas-quick-close"
-                  aria-label={t("canvas.closeMenu")}
-                  title={t("canvas.closeMenu")}
-                  onClick={clearFloatingSelection}
-                >
-                  ×
-                </button>
-                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label={t("toolbar.bold")} title={t("toolbar.bold")} onClick={toggleCanvasBold}>
-                  B
-                </button>
-                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label={t("toolbar.italic")} title={t("toolbar.italic")} onClick={toggleCanvasItalic}>
-                  I
-                </button>
-                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label={t("toolbar.underline")} title={t("toolbar.underline")} onClick={toggleCanvasUnderline}>
-                  <span style={{ textDecoration: "underline" }}>U</span>
-                </button>
-                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label={t("toolbar.decrease")} title={t("toolbar.decrease")} onClick={() => adjustCanvasSize("down")}>
-                  A-
-                </button>
-                <button type="button" className="canvas-quick-action canvas-text-format-action" aria-label={t("toolbar.increase")} title={t("toolbar.increase")} onClick={() => adjustCanvasSize("up")}>
-                  A+
-                </button>
-                {workbookUi.highlightOptions.filter((option) => option.value).map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`canvas-quick-action canvas-text-highlight-chip ${(option.value || null) === selectedHighlightColor ? "canvas-text-highlight-chip-active" : ""}`}
-                    aria-label={t("canvas.highlightColor", {color: option.label})}
-                    title={t("canvas.highlightColor", {color: option.label})}
-                    onClick={() => applyCanvasHighlight((option.value || null) === selectedHighlightColor ? "" : option.value)}
-                  >
-                    <span className="canvas-text-highlight-sample" style={{ backgroundColor: option.value }} />
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <TextFormatMenu
+              t={t}
+              menuRef={selectedTextBoxMenuRef}
+              position={selectedTextBoxMenuPosition}
+              highlightOptions={workbookUi.highlightOptions}
+              selectedHighlightColor={selectedHighlightColor}
+              onClose={clearFloatingSelection}
+              onBold={toggleCanvasBold}
+              onItalic={toggleCanvasItalic}
+              onUnderline={toggleCanvasUnderline}
+              onSizeChange={adjustCanvasSize}
+              onHighlight={applyCanvasHighlight}
+            />
 
             {canvasQuickMenu ? (
-              <>
-                <div
-                  className="canvas-quick-anchor"
-                  style={{ left: `${canvasQuickMenu.clickX}px`, top: `${canvasQuickMenu.clickY}px` }}
-                  aria-hidden="true"
-                />
-                <div
-                  className="canvas-quick-menu"
-                  style={{ left: `${canvasQuickMenu.x}px`, top: `${canvasQuickMenu.y}px` }}
-                  onMouseDown={(event) => event.stopPropagation()}
-                >
-                  <button
-                    type="button"
-                    className="canvas-quick-close"
-                    aria-label={t("canvas.closeMenu")}
-                    title={t("canvas.closeMenu")}
-                    onClick={() => setCanvasQuickMenu(null)}
-                  >
-                    ×
-                  </button>
-                  <button type="button" className="canvas-quick-action" onClick={() => createTextBoxAt(canvasQuickMenu.clickX, canvasQuickMenu.clickY)}>
-                    T
-                  </button>
-                  {activeStructuredTools.map((tool) => (
-                    <button
-                      key={`quick-${tool.id}`}
-                      type="button"
-                      className="canvas-quick-action"
-                      title={tool.label}
-                      onClick={() => createStructuredToolAt(tool.id, canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
-                    >
-                      {renderStructuredToolGlyph(tool.id)}
-                    </button>
-                  ))}
-                  {activeInlineShortcuts
-                    .flatMap((group) => group.items)
-                    .slice(0, 6)
-                    .map((shortcut) => (
-                      <button
-                      key={`quick-symbol-${shortcut.id}`}
-                      type="button"
-                      className="canvas-quick-action"
-                      title={shortcut.hint}
-                      onClick={() => createShortcutSymbolAt(shortcut.id, canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
-                    >
-                      {renderShortcutGlyph(shortcut)}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : null}
-
-            {selectionRect ? (
-              <div
-                className="canvas-selection-rect"
-                style={{
-                  left: `${Math.min(selectionRect.originX, selectionRect.currentX)}px`,
-                  top: `${Math.min(selectionRect.originY, selectionRect.currentY)}px`,
-                  width: `${Math.abs(selectionRect.currentX - selectionRect.originX)}px`,
-                  height: `${Math.abs(selectionRect.currentY - selectionRect.originY)}px`
-                }}
+              <CanvasQuickInsertMenu
+                t={t}
+                menu={canvasQuickMenu}
+                structuredTools={activeStructuredTools}
+                inlineShortcuts={activeInlineShortcuts.flatMap((group) => group.items)}
+                onClose={() => setCanvasQuickMenu(null)}
+                onCreateText={() => createTextBoxAt(canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
+                onCreateStructured={(toolId) => createStructuredToolAt(toolId, canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
+                onCreateShortcut={(shortcutId) => createShortcutSymbolAt(shortcutId, canvasQuickMenu.clickX, canvasQuickMenu.clickY)}
               />
             ) : null}
+
+            {selectionRect ? <SelectionRectOverlay selectionRect={selectionRect} /> : null}
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {modalState ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setModalState(null)}>
-          <section className="block-modal" role="dialog" aria-modal="true" aria-labelledby="block-modal-title" onClick={(event) => event.stopPropagation()}>
-            <div className="block-modal-head">
-              <div>
-                <p className="card-kind">{t("modal.guidedBlock")}</p>
-                <h2 id="block-modal-title">{getBlockTitle(modalState.block, workbookUi.blockTitles)}</h2>
-                <p className="toolbar-helper">{t("modal.guidedBlockHelper")}</p>
-              </div>
-              <div className="card-actions">
-                <button type="button" className="small-action" onClick={() => setModalState(null)}>
-                  {t("modal.cancel")}
-                </button>
-                <button type="button" className="small-action primary-inline-action" onClick={applyModalBlock}>
-                  {modalState.mode === "insert" ? t("modal.insert") : t("modal.save")}
-                </button>
-              </div>
-            </div>
+      <GuidedBlockModal
+        t={t}
+        modalState={modalState}
+        blockTitles={workbookUi.blockTitles}
+        renderModalFields={renderModalFields}
+        onClose={() => setModalState(null)}
+        onApply={applyModalBlock}
+      />
 
-            {renderModalFields(modalState.block)}
+      <GraduatedLineModal
+        t={t}
+        graduatedLineModalState={graduatedLineModalState}
+        graduatedLineModalSettings={graduatedLineModalSettings}
+        onClose={cancelGraduatedLineModal}
+        onConfirm={confirmGraduatedLineModal}
+        onStartValueChange={(value) => {
+          const nextSettings = {
+            startValue: value.replace(/[^0-9-]/g, ""),
+            sections: graduatedLineModalSettings?.sections ?? graduatedLineModalState?.sections ?? "10"
+          };
+          graduatedLineModalSettingsRef.current = nextSettings;
+          setGraduatedLineModalSettings(nextSettings);
+        }}
+        onSectionsChange={updateGraduatedLineModalSections}
+        onSelectPreset={selectGraduatedLinePreset}
+        renderPreview={(startValue, sections) =>
+          graduatedLineModalState
+            ? renderGraduatedLinePreview(graduatedLineModalState.start, graduatedLineModalState.end, startValue, sections)
+            : null
+        }
+      />
 
-            <div className="block-modal-preview">
-              <section className="export-math-block">
-                <div className="export-math-head">
-                  <span>{t("modal.preview")}</span>
-                </div>
-                {renderMathPreview(modalState.block)}
-              </section>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {graduatedLineModalState ? (
-        <div className="modal-backdrop" role="presentation" onClick={cancelGraduatedLineModal}>
-          <section className="block-modal graduated-line-modal" role="dialog" aria-modal="true" aria-labelledby="graduated-line-modal-title" onClick={(event) => event.stopPropagation()}>
-            <div className="block-modal-head">
-              <div>
-                <p className="card-kind">{t("modal.graduatedLine")}</p>
-                <h2 id="graduated-line-modal-title">{t("modal.graduatedLine")}</h2>
-                <p className="toolbar-helper">{t("modal.graduatedLineHelper")}</p>
-              </div>
-              <div className="card-actions">
-                <button type="button" className="small-action" onClick={cancelGraduatedLineModal}>
-                  {t("modal.cancel")}
-                </button>
-                <button type="button" className="small-action primary-inline-action" onClick={confirmGraduatedLineModal}>
-                  {t("modal.insert")}
-                </button>
-              </div>
-            </div>
-
-            <div className="math-editor-grid graduated-line-modal-grid">
-                <label className="wide-field">
-                  <span>{t("modalFields.startAt")}</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={graduatedLineModalSettings?.startValue ?? graduatedLineModalState.startValue}
-                    onChange={(event) => {
-                      const nextSettings = {
-                        startValue: event.target.value.replace(/[^0-9-]/g, ""),
-                        sections: graduatedLineModalSettings?.sections ?? graduatedLineModalState.sections
-                      };
-                      graduatedLineModalSettingsRef.current = nextSettings;
-                      setGraduatedLineModalSettings(nextSettings);
-                    }}
-                    placeholder="0"
-                  />
-                </label>
-                <label className="wide-field">
-                  <span>{t("modalFields.sections")}</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={graduatedLineModalSettings?.sections ?? graduatedLineModalState.sections}
-                    onChange={(event) => updateGraduatedLineModalSections(event.target.value)}
-                    placeholder="10"
-                  />
-                </label>
-                <div className="graduated-line-preset-row" aria-label={t("modal.graduatedLinePresets")}>
-                {GRADUATED_LINE_PRESET_VALUES.map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`chip-button chip-button-compact graduated-line-preset-button ${(graduatedLineModalSettings?.sections ?? graduatedLineModalState.sections) === String(value) ? "graduated-line-preset-button-active" : ""}`}
-                    onClick={() => selectGraduatedLinePreset(value)}
-                  >
-                    {value}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="block-modal-preview graduated-line-modal-preview">
-              <section className="export-math-block">
-                <div className="export-math-head">
-                  <span>{t("modal.preview")}</span>
-                </div>
-                {renderGraduatedLinePreview(
-                  graduatedLineModalState.start,
-                  graduatedLineModalState.end,
-                  graduatedLineModalSettings?.startValue ?? graduatedLineModalState.startValue,
-                  graduatedLineModalSettings?.sections ?? graduatedLineModalState.sections
-                )}
-              </section>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {confirmResetState ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setConfirmResetState(null)}>
-          <section className="block-modal" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title" onClick={(event) => event.stopPropagation()}>
-            <div className="block-modal-head">
-              <div>
-                <p className="card-kind">{t("modal.confirmation")}</p>
-                <h2 id="reset-modal-title">{t("modal.createNewDocument")}</h2>
-                <p className="toolbar-helper">{t("modal.createNewDocumentHelper")}</p>
-              </div>
-              <div className="card-actions">
-                <button type="button" className="small-action" onClick={() => setConfirmResetState(null)}>
-                  {t("modal.cancel")}
-                </button>
-                <button type="button" className="small-action primary-inline-action" onClick={confirmResetDocument}>
-                  {t("modal.confirmNew")}
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      ) : null}
+      <ConfirmResetModal
+        t={t}
+        confirmResetState={confirmResetState}
+        onClose={() => setConfirmResetState(null)}
+        onConfirm={confirmResetDocument}
+      />
     </main>
   );
 }

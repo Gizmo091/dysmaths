@@ -297,6 +297,12 @@ button {
   line-height: 1.5;
 }
 
+.sidebar-credit-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .sidebar-credit a {
   color: color-mix(in srgb, var(--ink) 78%, var(--paper));
   text-decoration: underline;
@@ -315,6 +321,23 @@ button {
   outline: 2px solid color-mix(in srgb, var(--paper-margin) 92%, white);
   outline-offset: 3px;
   border-radius: 0.2rem;
+}
+
+.sidebar-credit-icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  text-decoration: none;
+  flex: 0 0 auto;
+}
+
+.sidebar-credit-icon-link svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
 }
 
 .sidebar-block {
