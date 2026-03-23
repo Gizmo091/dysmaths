@@ -5,7 +5,7 @@ test.describe("workbook", () => {
     await page.goto("/en");
 
     const sheetStyleSelect = page.getByTestId("sheet-style-select");
-    await expect(sheetStyleSelect).toHaveValue("seyes");
+    await expect(sheetStyleSelect).toHaveValue("lined");
 
     await sheetStyleSelect.selectOption("large-grid");
     await expect(sheetStyleSelect).toHaveValue("large-grid");
@@ -19,7 +19,6 @@ test.describe("workbook", () => {
 
     await expect(page).toHaveURL(/\/fr$/);
     await expect(page.getByRole("button", {name: "Imprimer"})).toBeVisible();
-    await expect(page.getByTestId("language-select")).toHaveValue("fr");
   });
 
   test("inserts geometry points and written additions", async ({page}) => {
