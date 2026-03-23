@@ -1434,7 +1434,7 @@ function translateGeometryShape(shape: GeometryShape, deltaXMm: number, deltaYMm
 }
 
 function getGeometrySelectionMeasurement(shape: GeometryShape) {
-  if (shape.kind === "segment" || shape.kind === "graduated-line") {
+  if (shape.kind === "segment") {
     return `${Math.round(Math.hypot(shape.bxMm - shape.axMm, shape.byMm - shape.ayMm))} mm`;
   }
 
@@ -1465,6 +1465,31 @@ function getGraduatedLineEndpointLabel(shape: GeometryLinearShape, index: number
   const sections = Math.max(1, Math.round(shape.sections ?? 10));
   const startValue = Math.round(shape.startValue ?? 0);
   return index === 0 ? startValue : startValue + sections;
+}
+
+function isGraduatedLineVertical(ax: number, ay: number, bx: number, by: number) {
+  return Math.abs(by - ay) > Math.abs(bx - ax);
+}
+
+function getGraduatedLineLabelPosition(ax: number, ay: number, bx: number, by: number, index: number) {
+  const labelOffset = 22;
+  const isVertical = isGraduatedLineVertical(ax, ay, bx, by);
+  const baseX = index === 0 ? ax : bx;
+  const baseY = index === 0 ? ay : by;
+
+  return isVertical
+    ? {
+        x: baseX - labelOffset,
+        y: baseY,
+        textAnchor: "end" as const,
+        dominantBaseline: "middle" as const
+      }
+    : {
+        x: baseX,
+        y: baseY - labelOffset,
+        textAnchor: "middle" as const,
+        dominantBaseline: "auto" as const
+      };
 }
 
 function getGraduatedLineTickLengthPx(index: number, sections: number) {
@@ -1530,6 +1555,31 @@ function getGraduatedLineRenderTicks(shape: GeometryLinearShape, canvasWidth: nu
   const sections = Math.max(1, Math.round(shape.sections ?? 10));
 
   return Array.from({ length: sections + 1 }, (_, index) => getGraduatedLineTickPath(rendered.x1, rendered.y1, rendered.x2, rendered.y2, index, sections));
+}
+
+function getGraduatedLineAxisLockedPoint(start: GeometryPointCoordinate, point: { xMm: number; yMm: number }, guides: { x: number | null; y: number | null }) {
+  const deltaX = Math.abs(point.xMm - start.xMm);
+  const deltaY = Math.abs(point.yMm - start.yMm);
+
+  if (deltaX >= deltaY) {
+    return {
+      xMm: point.xMm,
+      yMm: start.yMm,
+      guides: {
+        x: guides.x,
+        y: mmToPx(start.yMm)
+      }
+    };
+  }
+
+  return {
+    xMm: start.xMm,
+    yMm: point.yMm,
+    guides: {
+      x: mmToPx(start.xMm),
+      y: guides.y
+    }
+  };
 }
 
 function getGeometryAngleDegrees(vertex: GeometryPointCoordinate, baseline: GeometryPointCoordinate, end: GeometryPointCoordinate) {
@@ -4531,6 +4581,11 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
     }
 
     const snappedPoint = getGeometrySnapPoint(clientX, clientY);
+    const lockedPoint = getGraduatedLineAxisLockedPoint(
+      graduatedLineDraftRef.current.start,
+      { xMm: snappedPoint.xMm, yMm: snappedPoint.yMm },
+      snappedPoint.guides
+    );
     setGraduatedLineDraft((current) => {
       if (!current) {
         return current;
@@ -4538,12 +4593,12 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
 
       const nextDraft = {
         ...current,
-        current: { xMm: snappedPoint.xMm, yMm: snappedPoint.yMm }
+        current: { xMm: lockedPoint.xMm, yMm: lockedPoint.yMm }
       };
       graduatedLineDraftRef.current = nextDraft;
       return nextDraft;
     });
-    setSnapGuides(snappedPoint.guides);
+    setSnapGuides(lockedPoint.guides);
     return true;
   }
 
@@ -4561,6 +4616,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       return;
     }
 
+    setAdvancedTool(null);
     const nextSettings = {
       startValue: "0",
       sections: String(lastGraduatedLineSectionsRef.current)
@@ -8118,9 +8174,14 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       return null;
     }
 
+    const startLabelPosition = getGraduatedLineLabelPosition(rendered.x1, rendered.y1, rendered.x2, rendered.y2, 0);
+    const endLabelPosition = getGraduatedLineLabelPosition(rendered.x1, rendered.y1, rendered.x2, rendered.y2, 1);
+
     const points = [
       { x: rendered.x1, y: rendered.y1 },
       { x: rendered.x2, y: rendered.y2 },
+      { x: startLabelPosition.x, y: startLabelPosition.y },
+      { x: endLabelPosition.x, y: endLabelPosition.y },
       ...ticks.flatMap((tick) => [
         { x: tick.x1, y: tick.y1 },
         { x: tick.x2, y: tick.y2 }
@@ -8162,14 +8223,21 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
               strokeLinecap="round"
             />
           ))}
-          <text className="canvas-geometry-measure canvas-geometry-graduated-line-label" x={ticks[0] ? ticks[0].x1 : rendered.x1} y={ticks[0] ? ticks[0].y1 - 10 : rendered.y1 - 10} textAnchor="middle">
+          <text
+            className="canvas-geometry-measure canvas-geometry-graduated-line-label"
+            x={startLabelPosition.x}
+            y={startLabelPosition.y}
+            textAnchor={startLabelPosition.textAnchor}
+            dominantBaseline={startLabelPosition.dominantBaseline}
+          >
             {getGraduatedLineEndpointLabel(previewShape, 0)}
           </text>
           <text
             className="canvas-geometry-measure canvas-geometry-graduated-line-label"
-            x={ticks[ticks.length - 1] ? ticks[ticks.length - 1].x1 : rendered.x2}
-            y={ticks[ticks.length - 1] ? ticks[ticks.length - 1].y1 - 10 : rendered.y2 - 10}
-            textAnchor="middle"
+            x={endLabelPosition.x}
+            y={endLabelPosition.y}
+            textAnchor={endLabelPosition.textAnchor}
+            dominantBaseline={endLabelPosition.dominantBaseline}
           >
             {getGraduatedLineEndpointLabel(previewShape, 1)}
           </text>
@@ -9145,6 +9213,10 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                 const measurementX = (mmToPx(shape.axMm) + mmToPx(shape.bxMm)) / 2;
                 const measurementY = (mmToPx(shape.ayMm) + mmToPx(shape.byMm)) / 2 - 14;
                 const graduatedLineTicks = shape.kind === "graduated-line" ? getGraduatedLineRenderTicks(shape, intrinsic.width, intrinsic.height) : [];
+                const graduatedLineStartLabelPosition =
+                  shape.kind === "graduated-line" ? getGraduatedLineLabelPosition(rendered.x1, rendered.y1, rendered.x2, rendered.y2, 0) : null;
+                const graduatedLineEndLabelPosition =
+                  shape.kind === "graduated-line" ? getGraduatedLineLabelPosition(rendered.x1, rendered.y1, rendered.x2, rendered.y2, 1) : null;
 
                 return (
                   <g
@@ -9185,17 +9257,19 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
                       <>
                         <text
                           className="canvas-geometry-measure canvas-geometry-graduated-line-label"
-                          x={graduatedLineTicks[0] ? graduatedLineTicks[0].x1 : rendered.x1}
-                          y={graduatedLineTicks[0] ? graduatedLineTicks[0].y1 - 10 : rendered.y1 - 10}
-                          textAnchor="middle"
+                          x={graduatedLineStartLabelPosition?.x ?? rendered.x1}
+                          y={graduatedLineStartLabelPosition?.y ?? rendered.y1}
+                          textAnchor={graduatedLineStartLabelPosition?.textAnchor ?? "middle"}
+                          dominantBaseline={graduatedLineStartLabelPosition?.dominantBaseline}
                         >
                           {getGraduatedLineEndpointLabel(shape, 0)}
                         </text>
                         <text
                           className="canvas-geometry-measure canvas-geometry-graduated-line-label"
-                          x={graduatedLineTicks[graduatedLineTicks.length - 1] ? graduatedLineTicks[graduatedLineTicks.length - 1].x1 : rendered.x2}
-                          y={graduatedLineTicks[graduatedLineTicks.length - 1] ? graduatedLineTicks[graduatedLineTicks.length - 1].y1 - 10 : rendered.y2 - 10}
-                          textAnchor="middle"
+                          x={graduatedLineEndLabelPosition?.x ?? rendered.x2}
+                          y={graduatedLineEndLabelPosition?.y ?? rendered.y2}
+                          textAnchor={graduatedLineEndLabelPosition?.textAnchor ?? "middle"}
+                          dominantBaseline={graduatedLineEndLabelPosition?.dominantBaseline}
                         >
                           {getGraduatedLineEndpointLabel(shape, 1)}
                       </text>
