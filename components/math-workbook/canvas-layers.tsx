@@ -212,7 +212,21 @@ export function GeometryCanvasLayer({
         if (!rendered) return null;
         return <line className="canvas-geometry-preview" x1={rendered.x1} y1={rendered.y1} x2={rendered.x2} y2={rendered.y2} />;
       })() : null}
-      {geometryProtractorDraft?.vertex ? renderProtractorOverlay(geometryProtractorDraft.vertex, geometryProtractorDraft.firstPoint, geometryProtractorDraft.current, "draft") : null}
+      {geometryProtractorDraft ? (() => {
+        if (!geometryProtractorDraft.vertex) {
+          return (
+            <line
+              className="canvas-geometry-preview canvas-geometry-measure-line"
+              x1={mmToPx(geometryProtractorDraft.firstPoint.xMm)}
+              y1={mmToPx(geometryProtractorDraft.firstPoint.yMm)}
+              x2={mmToPx(geometryProtractorDraft.current.xMm)}
+              y2={mmToPx(geometryProtractorDraft.current.yMm)}
+            />
+          );
+        }
+
+        return renderProtractorOverlay(geometryProtractorDraft.vertex, geometryProtractorDraft.firstPoint, geometryProtractorDraft.current, "draft");
+      })() : null}
       {geometryCompassDraft ? (() => {
         const centerX = mmToPx(geometryCompassDraft.center.xMm);
         const centerY = mmToPx(geometryCompassDraft.center.yMm);
