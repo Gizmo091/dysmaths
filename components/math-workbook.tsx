@@ -283,6 +283,14 @@ export function MathWorkbook() {
   const [pendingInsertTool, setPendingInsertTool] = useState<PendingInsertTool>(null);
   const [insertCursorPreview, setInsertCursorPreview] = useState<InsertCursorPreview>({ x: 0, y: 0, visible: false });
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
+  const [isCompactViewportForTools, setIsCompactViewportForTools] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1180px)");
+    setIsCompactViewportForTools(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsCompactViewportForTools(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
   const [draftStroke, setDraftStroke] = useState<FreehandPoint[] | null>(null);
   const [graduatedLineDraft, setGraduatedLineDraft] = useState<GraduatedLineDraft | null>(null);
   const [graduatedLineModalState, setGraduatedLineModalState] = useState<GraduatedLineModalState>(null);
@@ -5131,7 +5139,7 @@ function createGeometryShapeFromDraft(draft: GeometryDraft): Exclude<GeometrySha
       <section className="editor-stage">
         <WorkbookActionBar
           t={t}
-          canOpenTools={!isToolsPanelOpen}
+          canOpenTools={isCompactViewportForTools && !isToolsPanelOpen}
           canUndo={historyPast.length > 0}
           canRedo={historyFuture.length > 0}
           isExporting={isExporting}
